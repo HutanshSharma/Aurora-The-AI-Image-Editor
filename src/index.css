@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+.form-wrapper {
+  position: relative;
+  width: 100%;
+  min-height: 500px;
+}
+
+.plasma-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.form {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  opacity: 0;
+  transform: translateX(40px);
+  transition: all 0.5s ease;
+  pointer-events: none;
+}
+
+.form.active {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+  z-index: 2;
+}
+
+.login-form:not(.active),
+.signup-form:not(.active) {
+  transform: translateX(-40px);
+  z-index: 1;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+    }
+    to {
+        transform: translateX(0);
+}
+}
+
+@keyframes shrink {
+    from {
+        width: 100%;
+    }
+    to {
+        width: 0;
+}
+}
+
+.animate-slideIn {
+animation: slideIn 0.5s ease-out forwards;
+}
+
+.animate-shrink {
+animation: shrink 5s linear forwards;
+}
+
+#croptype {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.light-rays-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  pointer-events: none;
+  z-index: 3;
+  overflow: hidden;
+}
+
+
+.loader{
+  border: 5px solid rgba(255, 255, 255, 0.3);
+  border-top: 5px solid #FF3366;
+  border-radius: 60%;
+  width: 120px;
+  height: 120px;
+  animation: spin 1s linear infinite;
+  padding: 4em;
+}
+
+.loading-screen{
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  backdrop-filter: blur(10px);
+  background: black;;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
