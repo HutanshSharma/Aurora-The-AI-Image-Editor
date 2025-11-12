@@ -5,11 +5,12 @@ const MainPage = lazy(() => import("./components/MainPage/Mainpage"));
 const ResetPassword = lazy(() => import("./components/Auth/ResetPassword"));
 const VerifyEmail = lazy(() => import("./components/Auth/VerifyEmail"));
 const IntroPage = lazy(()=>import("./components/IntroPage/IntroPage"));
+const Editor = lazy(()=>import("./components/ImageEditor/Editor"))
 import { Routes, Route, Navigate, useLocation} from "react-router-dom"
 import ClipLoader from "react-spinners/HashLoader"
 import { UserProvider } from "./store/UserContext";
 
-function PrivateRoute({ children ,addToast }) {
+function PrivateRoute({ children }) {
   const token = localStorage.getItem("refresh_token");
   return token ? children : <Navigate to="/auth" replace />;
 }
@@ -57,6 +58,10 @@ function App() {
           </PrivateRoute>
         </UserProvider>
         } />
+      <Route path="/ImageEditor" element={
+        <Editor />
+      } 
+      />
 
       <Route path="/reset_password/:token" element={<ResetPassword addToast={addToast}/>}/>
 
