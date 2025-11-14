@@ -13,6 +13,11 @@
   overflow: hidden;
 }
 
+canvas {
+  pointer-events: auto;
+  touch-action: none;
+}
+
 .form {
   position: absolute;
   top: 0;

@@ -1,12 +1,12 @@
 import {MicOff, Mic} from "lucide-react"
 import { useState } from "react"
 
-export default function CommandInput({selectedObject}){
+export default function CommandInput({selectedObject, className}){
     const [isListening, setisListening] = useState(false)
 
     return (
         <>
-        <div className="mt-6 bg-black/30 backdrop-blur-md rounded-2xl p-4 absolute bottom-0 w-full">
+        <div className={`mt-6 bg-black/30 backdrop-blur-md rounded-2xl p-4 ${className} w-full`}>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -22,9 +22,9 @@ export default function CommandInput({selectedObject}){
                 {isListening ? <MicOff size={20} /> : <Mic size={20} />}
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-2">
+            {selectedObject && <p className="text-xs text-gray-400 mt-2">
               {selectedObject ? `Selected: ${selectedObject.name}` : 'Select an object first'}
-            </p>
+            </p>}
           </div>
         </>
     )

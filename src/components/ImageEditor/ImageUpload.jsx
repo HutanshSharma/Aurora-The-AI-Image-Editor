@@ -1,6 +1,6 @@
 import { Upload, X } from "lucide-react";
 
-export default function ImageUpload({setUploadedImage, setAllImages, simulateAISegmentation, closePopup, popupState, saveToHistory}){
+export default function ImageUpload({setUploadedImage, setAllImages, simulateAISegmentation, closePopup, popupState}){
     const handleImageUpload = (e) => {
         const file = e.target.files[0];
         if (file) {
@@ -11,7 +11,6 @@ export default function ImageUpload({setUploadedImage, setAllImages, simulateAIS
             setUploadedImage(img);
             setAllImages(prev=>[...prev, img])
             simulateAISegmentation(img);
-            saveToHistory(img, []);
             };
             img.src = event.target.result;
         };
