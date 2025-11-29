@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import ImageUpload from './ImageUpload';
 import Header from './Header';
 import Canvas from './Canvas';
@@ -6,6 +6,7 @@ import CommandInput from './CommandInput';
 import AnimatedList from './AnimatedList';
 import DropBox from './DropBox';
 import SegmentEditor from './SegmentEditor/SegmentEditor';
+import { useUser } from '../../store/UserContext';
 
 const Editor = () => {
   const [uploadedImage, setUploadedImage] = useState(null);
@@ -18,7 +19,62 @@ const Editor = () => {
   const [droppedObjects, setDroppedObjects] = useState([]);
   const [showEditor, setShowEditor] = useState(false)
 
+  const {user, fetchImage, deleteImage} = useUser()
   const dropBoxRef = useRef(null);
+
+  useEffect(() => {
+    if (user && user.images && user.images.length > 0) {
+      setallImages(user.images);
+    }
+  }, [user]);
+
+  const handleImageDelete = async (stored_name, original_name) => {
+    try {
+      await deleteImage(stored_name);
+      setallImages(prev => prev.filter(img => img.stored_name !== stored_name));
+    } catch (error) {
+      console.error('Failed to delete image:', error);
+    }
+  };
+
+  const handleImageClick = async (imageItem) => {
+    try {
+      let imageData;
+      
+      if (imageItem.stored_name) {
+        imageData = await fetchImage(imageItem.stored_name);
+        if (!imageData) {
+          console.error("Failed to fetch image data");
+          return;
+        }
+      } else {
+        imageData = imageItem;
+      }
+      
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      
+      if (imageData.base64) {
+        img.src = `data:image/jpeg;base64,${imageData.base64}`;
+      } else if (imageData.src) {
+        img.src = imageData.src;
+      } else {
+        console.error("No image source available");
+        return;
+      }
+      
+      img.onload = () => {
+        setUploadedImage(img);
+        setShowImages(false);
+      };
+      
+      img.onerror = () => {
+        console.error("Failed to load image");
+      };
+    } catch (error) {
+      console.error("Error in handleImageClick:", error);
+    }
+  };
 
   const openPopup = () => setPopupState('open-popup');
   const closePopup = () => {
@@ -52,11 +108,6 @@ const Editor = () => {
   };
 
   const handleLoadImages = () => setShowImages(prev => !prev);
-
-  const handleImageClick = (img) => {
-    setUploadedImage(img);
-    setShowImages(prev => !prev);
-  };
 
   const handleObjectDropped = (obj, dropPos) => {
     if (!dropBoxRef.current) return;
@@ -97,9 +148,11 @@ const Editor = () => {
               <AnimatedList
                 items={allImages}
                 onItemSelect={handleImageClick}
+                onItemDelete={handleImageDelete}
                 showGradients={true}
                 enableArrowNavigation={true}
                 displayScrollbar={true}
+                loaded={!!user}
               />
             </div>
           </div>

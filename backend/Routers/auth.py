@@ -1,234 +1,223 @@
-from fastapi import APIRouter,status, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, status, Depends, HTTPException, BackgroundTasks
 from datetime import timedelta, datetime, timezone
-from sqlalchemy.orm import Session
 from typing import Annotated
 from pydantic import BaseModel, EmailStr
-from ..database import Sessionmaker
-from ..models import Users
+from ..database import db
 from ..mail_config import fm
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError, ExpiredSignatureError
 from fastapi_mail import MessageSchema, MessageType
+from bson import ObjectId
 
 router = APIRouter(
-    tags=['/auth'],
-    prefix='/auth'
+    tags=["/auth"],
+    prefix="/auth"
 )
 
-SECRET_KEY = '920f066c1cebf8229949224928da7916f2b20c287e871ae135f79705c8fa6589'
-ALGORITHM = 'HS256'
+SECRET_KEY = "920f066c1cebf8229949224928da7916f2b20c287e871ae135f79705c8fa6589"
+ALGORITHM = "HS256"
 
-bcrypt_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
-oauth2_bearer = OAuth2PasswordBearer(tokenUrl='auth/token')
+bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_bearer = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 
-# pydantic models
 class SignUp(BaseModel):
-    username : str
-    email : EmailStr
-    password : str
+    username: str
+    email: EmailStr
+    password: str
 
 class LogIn(BaseModel):
-    email : EmailStr
-    password : str
+    email: EmailStr
+    password: str
 
 class SendMail(BaseModel):
-    email : EmailStr
+    email: EmailStr
 
 class ResetPassword(BaseModel):
-    password : str
+    password: str
 
 class RefreshToken(BaseModel):
-    refresh_token :str
+    refresh_token: str
 
-
-# utils
-def get_db():
-    db = Sessionmaker()
-    try:
-        yield db
-    finally:
-        db.close()
-
-def authenticate_user(email:str, password:str, db):
-    user = db.query(Users).filter(Users.email == email).first()
+async def authenticate_user(email: str, password: str):
+    user = await db.users.find_one({"email": email})
     if not user:
         return False
-    if not bcrypt_context.verify(password,user.hashed_password):
+    
+    if not bcrypt_context.verify(password, user["hashed_password"]):
         return False
+    
     return user
 
-def create_token(email:str, user_id:int, expires_delta: timedelta):
-    payload = {'sub':email, 'id':user_id}
+
+def create_token(email: str, user_id: str, expires_delta: timedelta):
+    payload = {"sub": email, "id": user_id}
     expires = datetime.now(timezone.utc) + expires_delta
-    payload.update({'exp':expires})
+    payload.update({"exp": expires})
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
+
 async def get_current_user(token: Annotated[str, Depends(oauth2_bearer)]):
+    if token is None:
+        print("No token provided")
+        raise HTTPException(status_code=401, detail="No token provided")
+    
     try:
+        print(f"Received token: {token[:20] if token else 'None'}...")  # Debug print
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get('sub')
-        user_id = payload.get('id')
+        email = payload.get("sub")
+        user_id = payload.get("id")
+
         if email is None or user_id is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Could not validate user")
-        return {'email':email, 'id':user_id}
+            print(f"Token payload missing email or user_id: email={email}, user_id={user_id}")
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        # Verify user still exists in database
+        user = await db.users.find_one({"email": email})
+        if not user:
+            print(f"User not found in database: {email}")
+            raise HTTPException(status_code=401, detail="User not found")
+
+        print(f"Successfully validated user: {email}")
+        return {"email": email, "id": user_id}
+
     except ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Token has expired')
-    except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Could not validate user")
-    
-async def get_user_from_token(token:str):
+        print("Token has expired")
+        raise HTTPException(status_code=401, detail="Token expired")
+    except JWTError as e:
+        print(f"JWT Error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+
+async def get_user_from_token(token: str):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get('sub')
-        user_id = payload.get('id')
-        if email is None or user_id is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Could not validate user")
-        return {'email':email, 'id':user_id}
+        email = payload.get("sub")
+        user_id = payload.get("id")
+
+        if not email or not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        return {"email": email, "id": user_id}
+
     except JWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Could not validate user")
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 
-# Dependencies
-db_dependency = Annotated[Session, Depends(get_db)]
-user_dependency = Annotated[dict, Depends(get_current_user)]
+@router.post("/", status_code=201)
+async def signup(formData: SignUp):
+    existing_user = await db.users.find_one({"email": formData.email})
 
+    if existing_user:
+        raise HTTPException(status_code=400, detail="User already exists")
 
-# routes
-@router.post('/',status_code=status.HTTP_201_CREATED)
-def signup(formData : SignUp, db: db_dependency):
-    user = db.query(Users).filter(Users.email == formData.email).first()
-    if user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='User with the same email id already exist')
-    
-    new_user = Users(
-        name = formData.username,
-        email = formData.email,
-        hashed_password = bcrypt_context.hash(formData.password) 
-    )
-    db.add(new_user)
-    db.commit()
-    return 
+    new_user = {
+        "name": formData.username,
+        "email": formData.email,
+        "hashed_password": bcrypt_context.hash(formData.password),
+        "verified": False,
+        "images": []
+    }
 
+    await db.users.insert_one(new_user)
+    return {"message": "User created successfully"}
 
-@router.post('/token',status_code=status.HTTP_201_CREATED)
-async def login_for_access_token(form_Data :LogIn,db: db_dependency):
-    user = authenticate_user(form_Data.email, form_Data.password, db)
+@router.post("/token", status_code=201)
+async def login_for_access_token(form_Data: LogIn):
+    user = await authenticate_user(form_Data.email, form_Data.password)
+
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Could not validate user, check your credentials")
-    token = create_token(user.email, user.id, timedelta(minutes=20))
-    return {'access_token':token, "token_type":'bearer'}
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    token = create_token(user["email"], str(user["_id"]), timedelta(minutes=20))
+    return {"access_token": token, "token_type": "bearer"}
 
-@router.post('/refresh_token',status_code=status.HTTP_201_CREATED)
-async def login_for_refresh_token(form_Data :LogIn, db:db_dependency):
-    user = authenticate_user(form_Data.email, form_Data.password, db)
+@router.post("/refresh_token", status_code=201)
+async def login_for_refresh_token(form_Data: LogIn):
+    user = await authenticate_user(form_Data.email, form_Data.password)
+
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Could not validate user, check your credentials")
-    token = create_token(user.email, user.id, timedelta(hours=2))
-    return {'refresh_token':token}
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    refresh_token = create_token(user["email"], str(user["_id"]), timedelta(hours=2))
+    return {"refresh_token": refresh_token}
 
-@router.post('/generate_new_access_token',status_code=status.HTTP_201_CREATED)
-async def generate_new_access_token(form_Data:RefreshToken, db: db_dependency):
+@router.post("/generate_new_access_token", status_code=201)
+async def generate_new_access_token(form_Data: RefreshToken):
     user_data = await get_user_from_token(form_Data.refresh_token)
-    if not user_data:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Validation Failed")
-    user = db.query(Users).filter(Users.email == user_data['email']).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='No such user found')
-    access_token = create_token(user.email, user.id, timedelta(minutes=20))
-    return {'access_token':access_token, "token_type":'bearer'}
+    email = user_data["email"]
 
-
-@router.post('/forgot_password',status_code=status.HTTP_200_OK)
-async def forgot_password(form_Data :SendMail, background_tasks : BackgroundTasks, db:db_dependency):
-    user = db.query(Users).filter(Users.email == form_Data.email).first()
+    user = await db.users.find_one({"email": email})
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="There is no user with this email")
-    
-    reset_token = create_token(user.email, user.id, timedelta(minutes = 20))
+        raise HTTPException(status_code=404, detail="User not found")
+
+    access_token = create_token(user["email"], str(user["_id"]), timedelta(minutes=20))
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/forgot_password", status_code=200)
+async def forgot_password(form_Data: SendMail, background_tasks: BackgroundTasks):
+    user = await db.users.find_one({"email": form_Data.email})
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    reset_token = create_token(user["email"], str(user["_id"]), timedelta(minutes=20))
 
     message = MessageSchema(
-        subject='Password Reset Request',
+        subject="Password Reset Request",
         recipients=[form_Data.email],
-        body = f"""
-You have requested to reset your password. 
-
-Please click on the following link to proceed with resetting your password: 
-<a href="http://localhost:5173/reset_password/{reset_token}">Reset Password</a>
-
-This link will expire in 20 minutes for security reasons. 
-
-If you did not request a password reset, please ignore this email.
+        body=f"""
+Click to reset password:
+<a href="http://localhost:5173/reset_password/{reset_token}">Reset</a>
 """,
-        subtype=MessageType.html 
+        subtype=MessageType.html
     )
 
     background_tasks.add_task(fm.send_message, message)
-    return {"message", f"Email has been sent successfully to {form_Data.email}"}
+    return {"message": f"Email sent to {form_Data.email}"}
 
+@router.put("/reset_password/{reset_token}", status_code=200)
+async def reset_password(reset_token: str, form_Data: ResetPassword):
+    creds = await get_user_from_token(reset_token)
+    email = creds["email"]
 
-@router.put('/reset_password/{reset_token}',status_code=status.HTTP_200_OK)
-async def reset_password(reset_token:str, form_Data: ResetPassword, db:db_dependency):
-    user_credentials = await get_user_from_token(reset_token)
-    user = db.query(Users).filter(Users.email == user_credentials['email']).first()
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found in the database")
-    user.hashed_password = bcrypt_context.hash(form_Data.password)
-    db.commit()
-    return {"message":"reset successful"}
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"hashed_password": bcrypt_context.hash(form_Data.password)}}
+    )
 
+    return {"message": "Password reset successful"}
 
-@router.post('/verify_email',status_code=status.HTTP_200_OK)
-async def verify_email(form_Data :SendMail, background_tasks : BackgroundTasks, db:db_dependency):
-    user = db.query(Users).filter(Users.email == form_Data.email).first()
+@router.post("/verify_email", status_code=200)
+async def verify_email(form_Data: SendMail, background_tasks: BackgroundTasks):
+    user = await db.users.find_one({"email": form_Data.email})
+
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="There is no user with this email")
-    
-    verify_token = create_token(user.email, user.id, timedelta(minutes = 20))
+        raise HTTPException(status_code=404, detail="User not found")
+
+    verify_token = create_token(user["email"], str(user["_id"]), timedelta(minutes=20))
 
     message = MessageSchema(
-        subject='Email Verification Request',
+        subject="Verify Email",
         recipients=[form_Data.email],
-        body = f"""
-You have requested to verify your email address.
-
-Please click the following link to complete the verification process: 
-<a href="http://localhost:5173/verify_email/{verify_token}">Verify Email</a>
-
-This link will expire in 20 minutes for security purposes.
-
-If you did not request this, please ignore this email.
+        body=f"""
+Click below to verify your email:
+<a href="http://localhost:5173/verify_email/{verify_token}">Verify</a>
 """,
-        subtype=MessageType.html 
+        subtype=MessageType.html
     )
 
     background_tasks.add_task(fm.send_message, message)
-    return {"message", f"Email has been sent successfully to {form_Data.email}"}
+    return {"message": f"Verification email sent to {form_Data.email}"}
 
+@router.put("/verify_email/{verify_token}", status_code=200)
+async def verify_email_token(verify_token: str):
+    creds = await get_user_from_token(verify_token)
+    email = creds["email"]
 
-@router.put('/verify_email/{verify_token}',status_code=status.HTTP_200_OK)
-async def reset_password(verify_token:str, db:db_dependency):
-    user_credentials = await get_user_from_token(verify_token)
-    user = db.query(Users).filter(Users.email == user_credentials['email']).first()
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found in the database")
-    user.verified = True
-    db.commit()
-    return {"message":"verified successfully"}
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {"verified": True}}
+    )
 
-
-
-
-
-
-
-    
-
+    return {"message": "Email verified successfully"}

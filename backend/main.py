@@ -1,12 +1,11 @@
 from fastapi import FastAPI
-import backend.models as models
-from .database import engine
 from .Routers import auth,user
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 origins = [
-    "http://localhost:5173" # production site
+    "http://localhost:5173",
+    "http://localhost:3000"
 ]
 
 app.add_middleware(
@@ -16,8 +15,6 @@ app.add_middleware(
     allow_methods=["*"],            
     allow_headers=["*"],           
 )
-
-models.Base.metadata.create_all(bind=engine)
 
 app.include_router(auth.router)
 app.include_router(user.router)

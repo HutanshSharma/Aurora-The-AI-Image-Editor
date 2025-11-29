@@ -1,7 +1,7 @@
 import { Upload, X } from "lucide-react";
 
 export default function ImageUpload({setUploadedImage, setAllImages, simulateAISegmentation, closePopup, popupState}){
-    const handleImageUpload = (e) => {
+    const handleImageUpload = async (e) => {
         const file = e.target.files[0];
         if (file) {
         const reader = new FileReader();
@@ -16,6 +16,22 @@ export default function ImageUpload({setUploadedImage, setAllImages, simulateAIS
         };
         reader.readAsDataURL(file);
         closePopup()
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+            const response = await fetch("http://localhost:8000/user/upload-image", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${sessionStorage.getItem("access_token")}`
+                },
+                body: formData,
+            });
+            const data = await response.json();
+            console.log(data)
+        } 
+        catch (error) {
+            console.error("Upload failed:", error);
+        }
         }
     };
 

@@ -8,3 +8,5 @@ fastapi-mail
 bcrypt
 python-jose[cryptography]
 email-validator
+pymongo[srv]==3.12
+Pillow

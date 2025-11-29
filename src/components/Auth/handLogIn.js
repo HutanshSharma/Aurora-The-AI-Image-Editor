@@ -1,5 +1,5 @@
 export default function handleLogIn(loginData,addToast){
-    if(loginData.name === '' || loginData.password === ''){
+    if(loginData.email === '' || loginData.password === ''){
       addToast('Required Fields are empty','error')
       return 
     }

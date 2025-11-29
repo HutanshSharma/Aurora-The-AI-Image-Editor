@@ -1,7 +1,6 @@
 import { useState, lazy, Suspense } from "react";
 import Toast from "./components/Toast";
 const AuthPage = lazy(() => import("./components/Auth/Auth"));
-const MainPage = lazy(() => import("./components/MainPage/Mainpage"));
 const ResetPassword = lazy(() => import("./components/Auth/ResetPassword"));
 const VerifyEmail = lazy(() => import("./components/Auth/VerifyEmail"));
 const IntroPage = lazy(()=>import("./components/IntroPage/IntroPage"));
@@ -54,24 +53,19 @@ function App() {
       <Route path="/" element={
         <UserProvider addToast={addToast} >
           <PrivateRoute addToast={addToast} >
-            <MainPage addToast={addToast}/>
+            <Editor addToast={addToast}/>
           </PrivateRoute>
         </UserProvider>
         } />
-      <Route path="/ImageEditor" element={
-        <Editor />
-      } 
-      />
-
       <Route path="/reset_password/:token" element={<ResetPassword addToast={addToast}/>}/>
 
       <Route path="/verify_email/:token" element={<VerifyEmail addToast={addToast}/>} />
     </Routes>
       {toasts &&
           <div className="fixed bottom-1 -right-2 md:bottom-8 md:right-8 flex flex-col gap-4 p-5 overflow-hidden">
-          {toasts.map(toast => (
+          {toasts.map((toast, idx) => (
             <Toast 
-              key={toast.id} 
+              key={idx} 
               id={toast.id}
               message={toast.message} 
               type={toast.type}

@@ -34,7 +34,7 @@ export default function AuthPage({addToast}) {
   const requirements = checkPasswordRequirements(signupData.password);  
 
   return (
-    <div className='relative sm:min-h-screen sm:flex sm:items-center sm:justify-center bg-gradient-to-br from-gray-950 via-red-950 to-gray-950'>
+    <div className='relative sm:min-h-screen sm:flex sm:items-center sm:justify-center bg-linear-to-br from-gray-950 via-red-950 to-gray-950'>
       <div className="absolute inset-0 overflow-hidden">
         <Beams
           beamWidth={2}
