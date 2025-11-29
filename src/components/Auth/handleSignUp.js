@@ -1,4 +1,4 @@
-export default function handleSignUp(signupData,requirements,addToast,setIsLogin){
+export default function handleSignUp(signupData, requirements, addToast, setIsLogin, setIsLoading){
   if(signupData.name === '' || signupData.email === '' || signupData.password === ''){
     addToast('Required Fields are empty','error')
     return 
@@ -16,6 +16,8 @@ export default function handleSignUp(signupData,requirements,addToast,setIsLogin
     return 
   }
 
+  setIsLoading(true);
+
   (async function(){
     try{
       const response = await fetch("http://localhost:8000/auth/",{
@@ -32,11 +34,13 @@ export default function handleSignUp(signupData,requirements,addToast,setIsLogin
       const resData = await response.json()
       if(!response.ok){
         addToast(resData.detail, 'error')
+        setIsLoading(false);
         return
       }
     }
     catch(error){
       addToast('Something went wrong. Please try again later.','invalid')
+      setIsLoading(false);
       return
     }
 
@@ -55,6 +59,7 @@ export default function handleSignUp(signupData,requirements,addToast,setIsLogin
       if(!token.ok){
         addToast('Something went wrong. Please try logging in.','invalid')
         setIsLogin(true)
+        setIsLoading(false);
         return
       }
       sessionStorage.setItem('access_token',tokenData['access_token'])
@@ -63,6 +68,7 @@ export default function handleSignUp(signupData,requirements,addToast,setIsLogin
       console.log(error)
       addToast('Something went wrong. Please try logging in.','invalid')
       setIsLogin(true)
+      setIsLoading(false);
       return
     }
 
@@ -80,13 +86,17 @@ export default function handleSignUp(signupData,requirements,addToast,setIsLogin
         const refreshData = await refresh_token.json()
         if(!refresh_token.ok){
           addToast(refreshData.detail,'error')
+          setIsLoading(false);
           return
         }
         addToast('Account created and logged in successfully.','success')
         localStorage.setItem('refresh_token',refreshData['refresh_token'])
+        setIsLoading(false);
+        window.location.href = '/'
       }
       catch(error){
         addToast('Something went wrong. Please try again later.','invalid')
+        setIsLoading(false);
         return
       }
   })()

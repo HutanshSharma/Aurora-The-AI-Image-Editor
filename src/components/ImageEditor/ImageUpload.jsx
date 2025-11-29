@@ -1,37 +1,26 @@
 import { Upload, X } from "lucide-react";
 
-export default function ImageUpload({setUploadedImage, setAllImages, simulateAISegmentation, closePopup, popupState}){
-    const handleImageUpload = async (e) => {
+export default function ImageUpload({setUploadedImage, handleImageUpload, simulateAISegmentation, closePopup, popupState}){
+    const handleFileUpload = async (e) => {
         const file = e.target.files[0];
         if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const img = new Image();
-            img.onload = () => {
-            setUploadedImage(img);
-            setAllImages(prev=>[...prev, img])
-            simulateAISegmentation(img);
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    setUploadedImage(img);
+                    simulateAISegmentation(img);
+                };
+                img.src = event.target.result;
             };
-            img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
-        closePopup()
-        try {
-            const formData = new FormData();
-            formData.append("file", file);
-            const response = await fetch("http://localhost:8000/user/upload-image", {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${sessionStorage.getItem("access_token")}`
-                },
-                body: formData,
-            });
-            const data = await response.json();
-            console.log(data)
-        } 
-        catch (error) {
-            console.error("Upload failed:", error);
-        }
+            reader.readAsDataURL(file);
+            closePopup();
+            
+            try {
+                await handleImageUpload(file);
+            } catch (error) {
+                console.error("Upload failed:", error);
+            }
         }
     };
 
@@ -46,7 +35,7 @@ export default function ImageUpload({setUploadedImage, setAllImages, simulateAIS
             <input
                 type="file"
                 accept="image/*"
-                onChange={handleImageUpload}
+                onChange={handleFileUpload}
                 className="hidden"
             />
             <button type="button" className="rounded-full" onClick={closePopup}>

@@ -4,12 +4,14 @@ import SignUpForm from './SignUpForm';
 import ForgotPassword from './ForgotPassword';
 import Panel from './Panel';
 import Beams from './Beams';
+import ClipLoader from "react-spinners/HashLoader";
 
 export default function AuthPage({addToast}) {
   const [isLogin, setIsLogin] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [showConfirmPassword, setShowComfirmPassword] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [signupData, setSignupData] = useState({
     name: '',
     email: '',
@@ -47,7 +49,17 @@ export default function AuthPage({addToast}) {
           rotation={20}
         />
       </div>
-        <Panel />
+      
+      {isLoading && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-900/90 rounded-lg p-8 flex flex-col items-center gap-4">
+            <ClipLoader color="rgba(239,68,68,0.9)" size={50} />
+            <p className="text-white text-sm">Authenticating...</p>
+          </div>
+        </div>
+      )}
+      
+      <Panel />
       <div className="w-full sm:max-w-sm flex items-center justify-center backdrop-blur-xs text-white">
         <div className="w-full bg-[rgba(0,0,0,0.7)] rounded-t-4xl sm:rounded-4xl p-6 shadow-xl">
             <div className="flex bg-[#1b1b1b] rounded-full p-1 mb-6">
@@ -86,6 +98,8 @@ export default function AuthPage({addToast}) {
                   addToast = {addToast}
                   setisPasswordChange = {setisPasswordChange}
                   setIsLogin = {setIsLogin}
+                  isLoading={isLoading}
+                  setIsLoading={setIsLoading}
                 />
               </div>
 
@@ -100,6 +114,8 @@ export default function AuthPage({addToast}) {
                   showConfirmPassword={showConfirmPassword}
                   addToast={addToast}
                   setIsLogin={setIsLogin}
+                  isLoading={isLoading}
+                  setIsLoading={setIsLoading}
                 />
               </div>
 

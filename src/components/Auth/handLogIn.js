@@ -1,4 +1,4 @@
-export default function handleLogIn(loginData,addToast){
+export default function handleLogIn(loginData, addToast, setIsLoading){
     if(loginData.email === '' || loginData.password === ''){
       addToast('Required Fields are empty','error')
       return 
@@ -7,6 +7,8 @@ export default function handleLogIn(loginData,addToast){
       addToast("Email I'd is not valid", 'error')
       return 
     }
+
+    setIsLoading(true);
 
     (async function(){
       try{
@@ -23,12 +25,14 @@ export default function handleLogIn(loginData,addToast){
         const tokenData = await token.json()
         if(!token.ok){
           addToast(tokenData.detail,'error')
+          setIsLoading(false);
           return
         }
         sessionStorage.setItem('access_token',tokenData['access_token'])
       }
       catch(error){
         addToast('Something went wrong. Please try again later.','invalid')
+        setIsLoading(false);
         return
       }
 

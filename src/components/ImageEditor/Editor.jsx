@@ -19,12 +19,14 @@ const Editor = () => {
   const [droppedObjects, setDroppedObjects] = useState([]);
   const [showEditor, setShowEditor] = useState(false)
 
-  const {user, fetchImage, deleteImage} = useUser()
+  const {user, fetchImage, uploadImage, deleteImage} = useUser()
   const dropBoxRef = useRef(null);
 
   useEffect(() => {
     if (user && user.images && user.images.length > 0) {
       setallImages(user.images);
+    } else if (user && (!user.images || user.images.length === 0)) {
+      setallImages([]);
     }
   }, [user]);
 
@@ -34,6 +36,16 @@ const Editor = () => {
       setallImages(prev => prev.filter(img => img.stored_name !== stored_name));
     } catch (error) {
       console.error('Failed to delete image:', error);
+    }
+  };
+
+  const handleImageUpload = async (file) => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      await uploadImage(formData);
+    } catch (error) {
+      console.error('Failed to upload image:', error);
     }
   };
 
@@ -135,8 +147,8 @@ const Editor = () => {
 
       <div>
         <ImageUpload
-          setAllImages={setallImages}
           setUploadedImage={setUploadedImage}
+          handleImageUpload={handleImageUpload}
           simulateAISegmentation={simulateAISegmentation}
           closePopup={closePopup}
           popupState={popupState}

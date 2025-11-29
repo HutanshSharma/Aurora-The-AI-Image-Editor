@@ -3,7 +3,7 @@ import handleSignUp from './handleSignUp'
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebookF } from "react-icons/fa";
 
-export default function SignUpForm({setShowSignupPassword, setSignupData, signupData, showSignupPassword, requirements, setShowComfirmPassword, showConfirmPassword, addToast, setIsLogin}){
+export default function SignUpForm({setShowSignupPassword, setSignupData, signupData, showSignupPassword, requirements, setShowComfirmPassword, showConfirmPassword, addToast, setIsLogin, isLoading, setIsLoading}){
   return (
     <div className="mt-6 space-y-4">
 
@@ -77,11 +77,26 @@ export default function SignUpForm({setShowSignupPassword, setSignupData, signup
           </span>
       </div>
 
-      <button className="w-full bg-red-500 hover:bg-red-400 text-white py-3 rounded-xl text-sm font-medium transition"
-        onClick={()=>handleSignUp(signupData, requirements,addToast,setIsLogin)}  
-        >
-        Sign Up
-        <span>→</span>
+      <button 
+        className={`w-full py-3 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2 ${
+          isLoading 
+            ? 'bg-gray-500 cursor-not-allowed' 
+            : 'bg-red-500 hover:bg-red-400 text-white'
+        }`}
+        onClick={()=>handleSignUp(signupData, requirements, addToast, setIsLogin, setIsLoading)}  
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <>
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            Signing Up...
+          </>
+        ) : (
+          <>
+            Sign Up
+            <span>→</span>
+          </>
+        )}
       </button>
 
       <div className="flex items-center my-3 text-gray-400 text-sm">

@@ -4,6 +4,7 @@ const UserContext = createContext();
 
 export function UserProvider({ children, addToast }) {
     const [user, setUser] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
     const [imageCache, setImageCache] = useState(new Map());
     
     const fetchImage = async (stored_name) => {
@@ -44,6 +45,56 @@ export function UserProvider({ children, addToast }) {
             console.error("Error fetching image:", error);
             addToast("Failed to load image", "error");
             return null;
+        }
+    };
+
+    const uploadImage = async (formData) => {
+        try {
+            const accessToken = sessionStorage.getItem("access_token");
+            if (!accessToken) {
+                throw new Error("No access token available");
+            }
+            
+            const response = await fetch("http://localhost:8000/user/upload-image", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${accessToken}`
+                },
+                body: formData,
+            });
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    const refreshed = await refreshAccessToken();
+                    if (refreshed) {
+                        return uploadImage(formData);
+                    }
+                }
+                const errorData = await response.json();
+                throw new Error(errorData.detail || `Failed to upload image: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            
+            setUser(prevUser => {
+                if (!prevUser) return prevUser;
+                
+                const newImage = {
+                    stored_name: result.stored_name,
+                    original_name: result.original_name,
+                    exists: true
+                };
+                
+                return {
+                    ...prevUser,
+                    images: [newImage, ...(prevUser.images || [])]
+                };
+            });
+            return result;
+        } catch (error) {
+            console.error("Error uploading image:", error);
+            addToast(error.message || "Failed to upload image", "error");
+            throw error;
         }
     };
 
@@ -106,7 +157,6 @@ export function UserProvider({ children, addToast }) {
         const refreshToken = localStorage.getItem("refresh_token");
                 
         if (!accessToken) {
-            console.log("No access token found, trying to refresh...");
             if (refreshToken) {
                 const refreshed = await refreshAccessToken();
                 if (refreshed) {
@@ -114,9 +164,11 @@ export function UserProvider({ children, addToast }) {
                 } else {
                     localStorage.removeItem('refresh_token');
                     addToast("Please log in to continue.", "error");
+                    setIsLoading(false);
                     return;
                 }
             } else {
+                setIsLoading(false);
                 return;
             }
         }
@@ -128,38 +180,37 @@ export function UserProvider({ children, addToast }) {
             "Authorization": `Bearer ${accessToken}`,
           },
         });
-        console.log("Response status:", response.status);
         
         if (response.status === 401) {
           const resData = await response.json();
-          console.log("401 error details:", resData);
           const refreshed = await refreshAccessToken();
           if (refreshed) {
-            console.log("Token refreshed, retrying...");
             return fetchUser();
           } else {
             localStorage.removeItem('refresh_token');
             sessionStorage.removeItem('access_token');
             addToast("Session expired. Please log in again.", "error");
+            setIsLoading(false);
             return;
           }
         }
         
         const data = await response.json();
         if (!response.ok) {
-          console.log("Response not ok:", data);
           localStorage.removeItem('refresh_token');
           sessionStorage.removeItem('access_token');
           addToast(data.detail || "Could not validate user", "error");
+          setIsLoading(false);
           return;
         }
         
-        console.log("User data fetched successfully:", data);
         setUser(data);
+        setIsLoading(false);
       } catch (error) {
         if(localStorage.getItem('refresh_token'))
           addToast("Network error while validating user", "error");
         localStorage.removeItem('refresh_token')
+        setIsLoading(false);
         return
       }
     }
@@ -180,8 +231,6 @@ export function UserProvider({ children, addToast }) {
             "Content-Type": "application/json",
             },
         });
-
-        console.log("Refresh response status:", res.status);
         const data = await res.json();
         
         if (!res.ok) {
@@ -189,19 +238,17 @@ export function UserProvider({ children, addToast }) {
             addToast(data.detail, 'error');
             return false;
         }
-        
-        console.log("Token refreshed successfully");
         sessionStorage.setItem("access_token", data.access_token);
         return true;
     } 
     catch (error) {
-        addToast("Vaildation Failed", 'invalid');
+        addToast("Validation Failed", 'error');
         return false;
     }
     }
 
     return (
-        <UserContext.Provider value={{ user, setUser, fetchImage, deleteImage, imageCache }}>
+        <UserContext.Provider value={{ user, setUser, fetchImage, uploadImage, deleteImage, imageCache, isLoading }}>
         {children}
         </UserContext.Provider>
     );

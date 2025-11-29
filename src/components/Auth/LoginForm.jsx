@@ -3,7 +3,7 @@ import handleLogIn from './handLogIn'
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebookF } from "react-icons/fa";
 
-export default function LoginForm({setLoginData, setShowLoginPassword, loginData, showLoginPassword, addToast, setisPasswordChange, setIsLogin}){
+export default function LoginForm({setLoginData, setShowLoginPassword, loginData, showLoginPassword, addToast, setisPasswordChange, setIsLogin, isLoading, setIsLoading}){
 
   return (
     <div className="mt-6 space-y-4">
@@ -42,11 +42,26 @@ export default function LoginForm({setLoginData, setShowLoginPassword, loginData
         }} className="text-red-500 text-sm hover:underline">Forgot Password?</button>
       </div>
 
-      <button className="w-full bg-red-500 hover:bg-red-400 text-white py-3 rounded-xl text-sm font-medium transition"
-        onClick={()=>handleLogIn(loginData, addToast)}
+      <button 
+        className={`w-full py-3 rounded-xl text-sm font-medium transition flex items-center justify-center gap-2 ${
+          isLoading 
+            ? 'bg-gray-500 cursor-not-allowed' 
+            : 'bg-red-500 hover:bg-red-400 text-white'
+        }`}
+        onClick={()=>handleLogIn(loginData, addToast, setIsLoading)}
+        disabled={isLoading}
       >
-        Log In
-        <span>→</span>
+        {isLoading ? (
+          <>
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            Signing In...
+          </>
+        ) : (
+          <>
+            Log In
+            <span>→</span>
+          </>
+        )}
       </button>
 
       <div className="flex items-center my-6 text-gray-400 text-sm">
