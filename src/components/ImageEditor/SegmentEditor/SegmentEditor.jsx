@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, FlipHorizontal, FlipVertical, ZoomIn, Palette } from "lucide-react";
+import { FlipHorizontal, FlipVertical, ZoomIn, Palette } from "lucide-react";
 import {handleWheel, handleTouchMovePinch, handleTouchEndPinch, handlePanStart, handlePanMove, handlePanEnd} from "../CanvasUtils"
 import SegmentHeader from './SegmentHeader';
 import GalleryView from './GalleryView';
@@ -8,26 +8,19 @@ import SegmentFooter from './SegmentFooter';
 import EditingOptions from './EditingOptions';
 import BackgroundPanel from './BackgroundPanel';
 import EditSlider from './EditSlider';
+import useHistory from '../../../hooks/useHistory';
+
+export class Command {
+  constructor(doFn, undoFn) {
+    this.do = doFn;
+    this.undo = undoFn;
+  }
+}
 
 export default function SegmentEditor({ setShowEditor, droppedObjects, onSave }) {
   const [selectedObjectIndex, setSelectedObjectIndex] = useState(droppedObjects.length-1);
   const [viewMode, setViewMode] = useState('edit');
-  const [editedObjects, setEditedObjects] = useState([...droppedObjects]);
-  
-  const [brightness, setBrightness] = useState(100);
-  const [contrast, setContrast] = useState(100);
-  const [saturation, setSaturation] = useState(100);
-  const [blur, setBlur] = useState(0);
-  const [rotation, setRotation] = useState(0);
-  const [flipH, setFlipH] = useState(false);
-  const [flipV, setFlipV] = useState(false);
-  
-  const [opacity, setOpacity] = useState(100);
-  const [sharpen, setSharpen] = useState(0);
-  const [hue, setHue] = useState(0);
-  
   const [selectedEditOption, setSelectedEditOption] = useState(null);
-  
   const [sidebarView, setSidebarView] = useState('editing');
   const [isMobileToolbarOpen, setIsMobileToolbarOpen] = useState(false);
   
@@ -37,163 +30,38 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
   const lastDragPosRef = useRef({ x: 0, y: 0 });
   const lastDistanceRef = useRef(null);
   
-  const [backgroundColor, setBackgroundColor] = useState(null);
-  const [customBackground, setCustomBackground] = useState(null);
-  
-  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
-  const [backgroundScale, setBackgroundScale] = useState(1);
-  const [backgroundPos, setBackgroundPos] = useState({ x: 0, y: 0 });
-  const [imageScale, setImageScale] = useState(1);
-  const [imagePos, setImagePos] = useState({ x: 0, y: 0 });
-  
   const canvasRef = useRef(null);
   const backgroundInputRef = useRef(null);
-  const [history, setHistory] = useState([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
-  const isRestoringRef = useRef(false);
 
-  const currentObject = editedObjects[selectedObjectIndex];
+  const {
+    state: editorState,
+    execute,
+    undo: handleUndo,
+    redo: handleRedo,
+    canUndo,
+    canRedo,
+  } = useHistory({
+    brightness: 100,
+    contrast: 100,
+    saturation: 100,
+    blur: 0,
+    rotation: 0,
+    flipH: false,
+    flipV: false,
+    opacity: 100,
+    sharpen: 0,
+    hue: 0,
+    imageScale: 1,
+    imagePos: {x:0,y:0},
+    backgroundScale: 1,
+    backgroundPos: {x:0,y:0},
+    backgroundColor: null,
+    customBackground: null,
+    editedObjects: [...droppedObjects],
+  });
 
-  const saveToHistory = () => {
-    if (isRestoringRef.current) return;
-    
-    const currentState = {
-      brightness,
-      contrast,
-      saturation,
-      blur,
-      rotation,
-      flipH,
-      flipV,
-      opacity,
-      sharpen,
-      hue,
-      imageScale,
-      imagePos,
-      backgroundScale,
-      backgroundPos,
-      backgroundColor,
-      customBackground,
-      canvasSize,
-      editedObjects: JSON.parse(JSON.stringify(editedObjects.map(obj => ({
-        ...obj,
-        image: obj.image.src 
-      })))),
-    };
-
-    setHistory(prev => {
-      const newHistory = prev.slice(0, historyIndex + 1);
-      newHistory.push(currentState);
-      if (newHistory.length > 50) {
-        newHistory.shift();
-        return newHistory;
-      }
-      return newHistory;
-    });
-    
-    setHistoryIndex(prev => {
-      const newIndex = prev + 1;
-      return newIndex >= 50 ? 49 : newIndex;
-    });
-  };
-
-  const handleUndo = () => {
-    if (historyIndex <= 0) return;
-    
-    isRestoringRef.current = true;
-    const previousState = history[historyIndex - 1];
-    
-    setBrightness(previousState.brightness);
-    setContrast(previousState.contrast);
-    setSaturation(previousState.saturation);
-    setBlur(previousState.blur);
-    setRotation(previousState.rotation);
-    setFlipH(previousState.flipH);
-    setFlipV(previousState.flipV);
-    setOpacity(previousState.opacity);
-    setSharpen(previousState.sharpen);
-    setHue(previousState.hue);
-    setImageScale(previousState.imageScale);
-    setImagePos(previousState.imagePos);
-    setBackgroundScale(previousState.backgroundScale);
-    setBackgroundPos(previousState.backgroundPos);
-    setBackgroundColor(previousState.backgroundColor);
-    setCustomBackground(previousState.customBackground);
-    setCanvasSize(previousState.canvasSize);
-    
-    if (previousState.editedObjects) {
-      const restoredObjects = previousState.editedObjects.map(obj => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.src = obj.image;
-        return { ...obj, image: img };
-      });
-      setEditedObjects(restoredObjects);
-    }
-    
-    setHistoryIndex(prev => prev - 1);
-    
-    setTimeout(() => {
-      isRestoringRef.current = false;
-    }, 0);
-  };
-
-  const handleRedo = () => {
-    if (historyIndex >= history.length - 1) return;
-    
-    isRestoringRef.current = true;
-    const nextState = history[historyIndex + 1];
-    
-    setBrightness(nextState.brightness);
-    setContrast(nextState.contrast);
-    setSaturation(nextState.saturation);
-    setBlur(nextState.blur);
-    setRotation(nextState.rotation);
-    setFlipH(nextState.flipH);
-    setFlipV(nextState.flipV);
-    setOpacity(nextState.opacity);
-    setSharpen(nextState.sharpen);
-    setHue(nextState.hue);
-    setImageScale(nextState.imageScale);
-    setImagePos(nextState.imagePos);
-    setBackgroundScale(nextState.backgroundScale);
-    setBackgroundPos(nextState.backgroundPos);
-    setBackgroundColor(nextState.backgroundColor);
-    setCustomBackground(nextState.customBackground);
-    setCanvasSize(nextState.canvasSize);
-    
-    if (nextState.editedObjects) {
-      const restoredObjects = nextState.editedObjects.map(obj => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.src = obj.image;
-        return { ...obj, image: img };
-      });
-      setEditedObjects(restoredObjects);
-    }
-    
-    setHistoryIndex(prev => prev + 1);
-    
-    setTimeout(() => {
-      isRestoringRef.current = false;
-    }, 0);
-  };
-
-  useEffect(() => {
-    if (history.length === 0) {
-      saveToHistory();
-    }
-  }, []);
-
-  useEffect(() => {
-    if (history.length > 0 && !isRestoringRef.current) {
-      const timeoutId = setTimeout(() => {
-        saveToHistory();
-      }, 300);
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [brightness, contrast, saturation, blur, rotation, flipH, flipV, opacity, sharpen, hue, imageScale, imagePos, backgroundScale, backgroundPos, backgroundColor, customBackground, canvasSize, editedObjects]);
+  const currentObject = editorState.editedObjects[selectedObjectIndex];
+  const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -210,7 +78,7 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [historyIndex, history]);
+  }, [handleUndo, handleRedo]);
 
   const handleCustomBackgroundUpload = (e) => {
     const file = e.target.files?.[0];
@@ -220,8 +88,10 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        setCustomBackground(img);
-        setBackgroundColor(null);
+        execute(new Command(
+          (s) => ({ ...s, customBackground: img, backgroundColor: null }),
+          (s) => ({ ...s, customBackground: s.customBackground, backgroundColor: s.backgroundColor })
+        ));
       };
       img.src = event.target.result;
     };
@@ -236,41 +106,41 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     
-    if (customBackground) {
-      const bgW = exportCanvas.width * backgroundScale;
-      const bgH = exportCanvas.height * backgroundScale;
-      const bgX = (exportCanvas.width - bgW) / 2 + backgroundPos.x;
-      const bgY = (exportCanvas.height - bgH) / 2 + backgroundPos.y;
-      ctx.drawImage(customBackground, bgX, bgY, bgW, bgH);
-    } else if (backgroundColor) {
-      ctx.fillStyle = backgroundColor;
-      const bgW = exportCanvas.width * backgroundScale;
-      const bgH = exportCanvas.height * backgroundScale;
-      const bgX = (exportCanvas.width - bgW) / 2 + backgroundPos.x;
-      const bgY = (exportCanvas.height - bgH) / 2 + backgroundPos.y;
+    if (editorState.customBackground) {
+      const bgW = exportCanvas.width * editorState.backgroundScale;
+      const bgH = exportCanvas.height * editorState.backgroundScale;
+      const bgX = (exportCanvas.width - bgW) / 2 + editorState.backgroundPos.x;
+      const bgY = (exportCanvas.height - bgH) / 2 + editorState.backgroundPos.y;
+      ctx.drawImage(editorState.customBackground, bgX, bgY, bgW, bgH);
+    } else if (editorState.backgroundColor) {
+      ctx.fillStyle = editorState.backgroundColor;
+      const bgW = exportCanvas.width * editorState.backgroundScale;
+      const bgH = exportCanvas.height * editorState.backgroundScale;
+      const bgX = (exportCanvas.width - bgW) / 2 + editorState.backgroundPos.x;
+      const bgY = (exportCanvas.height - bgH) / 2 + editorState.backgroundPos.y;
       ctx.fillRect(bgX, bgY, bgW, bgH);
     }
     
-    const imgW = currentObject.width * imageScale;
-    const imgH = currentObject.height * imageScale;
-    const imgX = (exportCanvas.width - imgW) / 2 + imagePos.x;
-    const imgY = (exportCanvas.height - imgH) / 2 + imagePos.y;
+    const imgW = currentObject.width * editorState.imageScale;
+    const imgH = currentObject.height * editorState.imageScale;
+    const imgX = (exportCanvas.width - imgW) / 2 + editorState.imagePos.x;
+    const imgY = (exportCanvas.height - imgH) / 2 + editorState.imagePos.y;
     
     ctx.save();
     ctx.translate(imgX + imgW / 2, imgY + imgH / 2);
     
-    if (flipH) ctx.scale(-1, 1);
-    if (flipV) ctx.scale(1, -1);
+    if (editorState.flipH) ctx.scale(-1, 1);
+    if (editorState.flipV) ctx.scale(1, -1);
     
-    ctx.rotate((rotation * Math.PI) / 180);
+    ctx.rotate((editorState.rotation * Math.PI) / 180);
     ctx.translate(-(imgW / 2), -(imgH / 2));
     
-    let filterString = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px) hue-rotate(${hue}deg)`;
-    if (sharpen > 0) {
-      filterString += ` contrast(${100 + sharpen}%)`;
+    let filterString = `brightness(${editorState.brightness}%) contrast(${editorState.contrast}%) saturate(${editorState.saturation}%) blur(${editorState.blur}px) hue-rotate(${editorState.hue}deg)`;
+    if (editorState.sharpen > 0) {
+      filterString += ` contrast(${100 + editorState.sharpen}%)`;
     }
     ctx.filter = filterString;
-    ctx.globalAlpha = opacity / 100;
+    ctx.globalAlpha = editorState.opacity / 100;
     
     ctx.drawImage(currentObject.image, 0, 0, imgW, imgH);
     ctx.restore();
@@ -296,42 +166,42 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
     
     ctx.setTransform(zoom, 0, 0, zoom, offset.x, offset.y);
 
-    if (customBackground && customBackground.complete) {
+    if (editorState.customBackground && editorState.customBackground.complete) {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      const bgW = canvas.width * backgroundScale;
-      const bgH = canvas.height * backgroundScale;
-      const bgX = (canvas.width - bgW) / 2 + backgroundPos.x;
-      const bgY = (canvas.height - bgH) / 2 + backgroundPos.y;
-      ctx.drawImage(customBackground, bgX, bgY, bgW, bgH);
-    } else if (backgroundColor) {
-      ctx.fillStyle = backgroundColor;
-      const bgW = canvas.width * backgroundScale;
-      const bgH = canvas.height * backgroundScale;
-      const bgX = (canvas.width - bgW) / 2 + backgroundPos.x;
-      const bgY = (canvas.height - bgH) / 2 + backgroundPos.y;
+      const bgW = canvas.width * editorState.backgroundScale;
+      const bgH = canvas.height * editorState.backgroundScale;
+      const bgX = (canvas.width - bgW) / 2 + editorState.backgroundPos.x;
+      const bgY = (canvas.height - bgH) / 2 + editorState.backgroundPos.y;
+      ctx.drawImage(editorState.customBackground, bgX, bgY, bgW, bgH);
+    } else if (editorState.backgroundColor) {
+      ctx.fillStyle = editorState.backgroundColor;
+      const bgW = canvas.width * editorState.backgroundScale;
+      const bgH = canvas.height * editorState.backgroundScale;
+      const bgX = (canvas.width - bgW) / 2 + editorState.backgroundPos.x;
+      const bgY = (canvas.height - bgH) / 2 + editorState.backgroundPos.y;
       ctx.fillRect(bgX, bgY, bgW, bgH);
     }
 
-    const imgW = currentObject.width * imageScale;
-    const imgH = currentObject.height * imageScale;
-    const imgX = (canvas.width - imgW) / 2 + imagePos.x;
-    const imgY = (canvas.height - imgH) / 2 + imagePos.y;
+    const imgW = currentObject.width * editorState.imageScale;
+    const imgH = currentObject.height * editorState.imageScale;
+    const imgX = (canvas.width - imgW) / 2 + editorState.imagePos.x;
+    const imgY = (canvas.height - imgH) / 2 + editorState.imagePos.y;
 
     ctx.translate(imgX + imgW / 2, imgY + imgH / 2);
     
-    if (flipH) ctx.scale(-1, 1);
-    if (flipV) ctx.scale(1, -1);
+    if (editorState.flipH) ctx.scale(-1, 1);
+    if (editorState.flipV) ctx.scale(1, -1);
     
-    ctx.rotate((rotation * Math.PI) / 180);
+    ctx.rotate((editorState.rotation * Math.PI) / 180);
     ctx.translate(-(imgW / 2), -(imgH / 2));
 
-    let filterString = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px) hue-rotate(${hue}deg)`;
-    if (sharpen > 0) {
-      filterString += ` contrast(${100 + sharpen}%)`;
+    let filterString = `brightness(${editorState.brightness}%) contrast(${editorState.contrast}%) saturate(${editorState.saturation}%) blur(${editorState.blur}px) hue-rotate(${editorState.hue}deg)`;
+    if (editorState.sharpen > 0) {
+      filterString += ` contrast(${100 + editorState.sharpen}%)`;
     }
     ctx.filter = filterString;
-    ctx.globalAlpha = opacity / 100;
+    ctx.globalAlpha = editorState.opacity / 100;
 
     try {
       ctx.imageSmoothingEnabled = true;
@@ -342,38 +212,48 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
     }
 
     ctx.restore();
-  }, [currentObject, brightness, contrast, saturation, blur, rotation, flipH, flipV, zoom, offset, opacity, sharpen, hue, backgroundColor, customBackground, canvasSize, backgroundScale, backgroundPos, imageScale, imagePos, viewMode]);
+  }, [currentObject, editorState, zoom, offset, canvasSize, viewMode]);
 
   const resetFilters = () => {
-    setBrightness(100);
-    setContrast(100);
-    setSaturation(100);
-    setBlur(0);
-    setRotation(0);
-    setFlipH(false);
-    setFlipV(false);
-    setOpacity(100);
-    setSharpen(0);
-    setHue(0);
+    execute(new Command(
+      (s) => ({
+        ...s,
+        brightness: 100,
+        contrast: 100,
+        saturation: 100,
+        blur: 0,
+        rotation: 0,
+        flipH: false,
+        flipV: false,
+        opacity: 100,
+        sharpen: 0,
+        hue: 0,
+        imageScale: 1,
+        imagePos: { x: 0, y: 0 },
+        backgroundScale: 1,
+        backgroundPos: { x: 0, y: 0 },
+      }),
+      (s) => ({ ...s })
+    ));
     setZoom(1);
     setOffset({ x: 0, y: 0 });
-    setImageScale(1);
-    setImagePos({ x: 0, y: 0 });
-    setBackgroundScale(1);
-    setBackgroundPos({ x: 0, y: 0 });
-    setTimeout(() => saveToHistory(), 100);
   };
 
   const saveEdits = () => {
     const canvas = canvasRef.current;
     const newImage = new Image();
     newImage.onload = () => {
-      const updatedObjects = [...editedObjects];
-      updatedObjects[selectedObjectIndex] = {
-        ...currentObject,
-        image: newImage
-      };
-      setEditedObjects(updatedObjects);
+      execute(new Command(
+        (s) => {
+          const updatedObjects = [...s.editedObjects];
+          updatedObjects[selectedObjectIndex] = {
+            ...currentObject,
+            image: newImage
+          };
+          return { ...s, editedObjects: updatedObjects };
+        },
+        (s) => ({ ...s })
+      ));
       resetFilters();
     };
     newImage.src = canvas.toDataURL('image/png', 1.0);
@@ -388,28 +268,36 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
   };
 
   const deleteObject = () => {
-    if (editedObjects.length === 1) {
+    if (editorState.editedObjects.length === 1) {
       alert('Cannot delete the last object');
       return;
     }
-    const newObjects = editedObjects.filter((_, i) => i !== selectedObjectIndex);
-    setEditedObjects(newObjects);
+    execute(new Command(
+      (s) => {
+        const newObjects = s.editedObjects.filter((_, i) => i !== selectedObjectIndex);
+        return { ...s, editedObjects: newObjects };
+      },
+      (s) => ({ ...s })
+    ));
     setSelectedObjectIndex(Math.max(0, selectedObjectIndex - 1));
   };
 
   const duplicateObject = () => {
     const duplicate = {
       ...currentObject,
-      id: editedObjects.length + 1,
+      id: editorState.editedObjects.length + 1,
       name: `${currentObject.name} (Copy)`
     };
-    setEditedObjects([...editedObjects, duplicate]);
+    execute(new Command(
+      (s) => ({ ...s, editedObjects: [...s.editedObjects, duplicate] }),
+      (s) => ({ ...s })
+    ));
   };
 
   const applyAllChanges = () => {
     saveEdits();
     setTimeout(() => {
-      onSave?.(editedObjects);
+      onSave?.(editorState.editedObjects);
       setShowEditor(false);
     }, 100);
   };
@@ -419,18 +307,18 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
       <div className="bg-black w-full h-full md:max-w-6xl md:h-[90vh] shadow-2xl border-0 md:border md:border-white/10 flex flex-col">
         <SegmentHeader 
           setShowEditor={setShowEditor} 
-          editedObjects={editedObjects} 
+          editedObjects={editorState.editedObjects} 
           setViewMode={setViewMode} 
           viewMode={viewMode}
           handleUndo={handleUndo}
           handleRedo={handleRedo}
-          canUndo={historyIndex > 0}
-          canRedo={historyIndex < history.length - 1}
+          canUndo={canUndo}
+          canRedo={canRedo}
         />
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row relative">
           
           {viewMode === 'gallery' ? (
-            <GalleryView editedObjects={editedObjects} setSelectedObjectIndex={setSelectedObjectIndex} setViewMode={setViewMode} selectedObjectIndex={selectedObjectIndex} duplicateObject={duplicateObject} deleteObject={deleteObject}/>
+            <GalleryView editedObjects={editorState.editedObjects} setSelectedObjectIndex={setSelectedObjectIndex} setViewMode={setViewMode} selectedObjectIndex={selectedObjectIndex} duplicateObject={duplicateObject} deleteObject={deleteObject}/>
           ) : (
             <>
               <div 
@@ -519,22 +407,8 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
                 <div className="absolute md:relative bottom-0 left-10 right-10 md:bottom-auto z-20 bg-black/95 md:bg-transparent backdrop-blur-md md:backdrop-blur-none p-3 md:p-0">
                   <EditSlider 
                     selectedEditOption={selectedEditOption}
-                    brightness={brightness}
-                    saturation={saturation}
-                    blur={blur}
-                    contrast={contrast}
-                    rotation={rotation}
-                    opacity={opacity}
-                    sharpen={sharpen}
-                    hue={hue}
-                    setBrightness={setBrightness}
-                    setContrast={setContrast}
-                    setSaturation={setSaturation}
-                    setBlur={setBlur}
-                    setOpacity={setOpacity}
-                    setRotation={setRotation}
-                    setSharpen={setSharpen}
-                    setHue={setHue}
+                    editorState={editorState}
+                    execute={execute}
                     setSelectedEditOption={setSelectedEditOption}/>
                 </div>
               )}
@@ -552,14 +426,8 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
 
                       <EditingOptions setSelectedEditOption={setSelectedEditOption}
                         selectedEditOption={selectedEditOption}
-                        brightness={brightness}
-                        contrast={contrast}
-                        saturation={saturation}
-                        blur={blur}
-                        rotation={rotation}
-                        opacity={opacity}
-                        sharpen={sharpen}
-                        hue={hue}
+                        editorState={editorState}
+                        execute={execute}
                         onClose={undefined}
                         setSidebarView={setSidebarView}/>
 
@@ -567,18 +435,28 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
                         <p className="text-xs font-semibold text-gray-400 uppercase mb-3">Transform</p>
                         <div className="grid grid-cols-2 gap-2">
                           <button
-                            onClick={() => setFlipH(!flipH)}
+                            onClick={() => {
+                              execute(new Command(
+                                (s) => ({ ...s, flipH: !s.flipH }),
+                                (s) => ({ ...s, flipH: !s.flipH })
+                              ));
+                            }}
                             className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                              flipH ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
+                              editorState.flipH ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
                             }`}
                           >
                             <FlipHorizontal size={16} />
                             <span className="text-sm">Flip H</span>
                           </button>
                           <button
-                            onClick={() => setFlipV(!flipV)}
+                            onClick={() => {
+                              execute(new Command(
+                                (s) => ({ ...s, flipV: !s.flipV }),
+                                (s) => ({ ...s, flipV: !s.flipV })
+                              ));
+                            }}
                             className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                              flipV ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
+                              editorState.flipV ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
                             }`}
                           >
                             <FlipVertical size={16} />
@@ -592,20 +470,10 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
                             setSidebarView={setSidebarView}
                             canvasSize={canvasSize}
                             setCanvasSize={setCanvasSize}
-                            setBackgroundColor={setBackgroundColor}
-                            setCustomBackground={setCustomBackground}
-                            backgroundColor={backgroundColor}
+                            editorState={editorState}
+                            execute={execute}
                             backgroundInputRef={backgroundInputRef}
                             handleCustomBackgroundUpload={handleCustomBackgroundUpload}
-                            customBackground={customBackground}
-                            backgroundScale={backgroundScale}
-                            setBackgroundScale={setBackgroundScale}
-                            backgroundPos={backgroundPos}
-                            setBackgroundPos={setBackgroundPos}
-                            imageScale={imageScale}
-                            setImagePos={setImagePos}
-                            setImageScale={setImageScale}
-                            imagePos={imagePos}
                             saveImageWithBackground={saveImageWithBackground}
                       />
                   )}
@@ -627,14 +495,8 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
 
                       <EditingOptions setSelectedEditOption={setSelectedEditOption}
                         selectedEditOption={selectedEditOption}
-                        brightness={brightness}
-                        contrast={contrast}
-                        saturation={saturation}
-                        blur={blur}
-                        rotation={rotation}
-                        opacity={opacity}
-                        sharpen={sharpen}
-                        hue={hue}
+                        editorState={editorState}
+                        execute={execute}
                         onClose={() => setIsMobileToolbarOpen(false)}/>
 
                       <div className="border-t border-white/10 pt-4">
@@ -642,11 +504,14 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
                         <div className="grid grid-cols-2 gap-2">
                           <button
                             onClick={() => {
-                              setFlipH(!flipH);
+                              execute(new Command(
+                                (s) => ({ ...s, flipH: !s.flipH }),
+                                (s) => ({ ...s, flipH: !s.flipH })
+                              ));
                               setIsMobileToolbarOpen(false);
                             }}
                             className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                              flipH ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
+                              editorState.flipH ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
                             }`}
                           >
                             <FlipHorizontal size={16} />
@@ -654,11 +519,14 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
                           </button>
                           <button
                             onClick={() => {
-                              setFlipV(!flipV);
+                              execute(new Command(
+                                (s) => ({ ...s, flipV: !s.flipV }),
+                                (s) => ({ ...s, flipV: !s.flipV })
+                              ));
                               setIsMobileToolbarOpen(false);
                             }}
                             className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                              flipV ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
+                              editorState.flipV ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
                             }`}
                           >
                             <FlipVertical size={16} />
@@ -672,20 +540,10 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
                             setSidebarView={setSidebarView}
                             canvasSize={canvasSize}
                             setCanvasSize={setCanvasSize}
-                            setBackgroundColor={setBackgroundColor}
-                            setCustomBackground={setCustomBackground}
-                            backgroundColor={backgroundColor}
+                            editorState={editorState}
+                            execute={execute}
                             backgroundInputRef={backgroundInputRef}
                             handleCustomBackgroundUpload={handleCustomBackgroundUpload}
-                            customBackground={customBackground}
-                            backgroundScale={backgroundScale}
-                            setBackgroundScale={setBackgroundScale}
-                            backgroundPos={backgroundPos}
-                            setBackgroundPos={setBackgroundPos}
-                            imageScale={imageScale}
-                            setImagePos={setImagePos}
-                            setImageScale={setImageScale}
-                            imagePos={imagePos}
                             saveImageWithBackground={saveImageWithBackground}
                             onClose={() => setIsMobileToolbarOpen(false)}
                       />
@@ -704,7 +562,7 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
           )}
         </div>
 
-        <SegmentFooter editedObjects={editedObjects} applyAllChanges={applyAllChanges}/>
+        <SegmentFooter editedObjects={editorState.editedObjects} applyAllChanges={applyAllChanges}/>
       </div>
     </div>
   );

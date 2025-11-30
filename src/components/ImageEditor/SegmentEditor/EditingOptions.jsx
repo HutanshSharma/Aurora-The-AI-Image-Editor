@@ -1,6 +1,6 @@
 import {Sun , Contrast, Droplet, Sparkles, RotateCw, ImageIcon, X, Palette} from "lucide-react"
 
-export default function EditingOptions({setSelectedEditOption, selectedEditOption, brightness, contrast, saturation, blur, rotation, opacity, sharpen, hue, onClose, setSidebarView}){
+export default function EditingOptions({setSelectedEditOption, selectedEditOption, editorState, execute, onClose, setSidebarView}){
     const handleOptionClick = (option) => {
         const isSelecting = selectedEditOption !== option;
         setSelectedEditOption(selectedEditOption === option ? null : option);
@@ -44,7 +44,7 @@ export default function EditingOptions({setSelectedEditOption, selectedEditOptio
                 <div className="flex items-center gap-2">
                     <Sun size={16} className="text-yellow-400" />
                 </div>
-                <span className="text-xs text-gray-400">{brightness}%</span>
+                <span className="text-xs text-gray-400">{editorState.brightness}%</span>
                 </button>
 
                 <button
@@ -56,7 +56,7 @@ export default function EditingOptions({setSelectedEditOption, selectedEditOptio
                 <div className="flex items-center gap-2">
                     <Contrast size={16} className="text-blue-400" />
                 </div>
-                <span className="text-xs text-gray-400">{contrast}%</span>
+                <span className="text-xs text-gray-400">{editorState.contrast}%</span>
                 </button>
 
                 <button
@@ -68,7 +68,7 @@ export default function EditingOptions({setSelectedEditOption, selectedEditOptio
                 <div className="flex items-center gap-2">
                     <Droplet size={16} className="text-purple-400" />
                 </div>
-                <span className="text-xs text-gray-400">{saturation}%</span>
+                <span className="text-xs text-gray-400">{editorState.saturation}%</span>
                 </button>
 
                 <button
@@ -80,7 +80,7 @@ export default function EditingOptions({setSelectedEditOption, selectedEditOptio
                 <div className="flex items-center gap-2">
                     <Sparkles size={16} className="text-pink-400" />
                 </div>
-                <span className="text-xs text-gray-400">{blur}px</span>
+                <span className="text-xs text-gray-400">{editorState.blur}px</span>
                 </button>
 
                 <button
@@ -92,7 +92,7 @@ export default function EditingOptions({setSelectedEditOption, selectedEditOptio
                 <div className="flex items-center gap-2">
                     <RotateCw size={16} className="text-green-400" />
                 </div>
-                <span className="text-xs text-gray-400">{rotation}°</span>
+                <span className="text-xs text-gray-400">{editorState.rotation}°</span>
                 </button>
 
                 <button
@@ -104,7 +104,7 @@ export default function EditingOptions({setSelectedEditOption, selectedEditOptio
                 <div className="flex items-center gap-2">
                     <ImageIcon size={16} className="text-indigo-400" />
                 </div>
-                <span className="text-xs text-gray-400">{opacity}%</span>
+                <span className="text-xs text-gray-400">{editorState.opacity}%</span>
                 </button>
 
                 <button
@@ -116,7 +116,7 @@ export default function EditingOptions({setSelectedEditOption, selectedEditOptio
                 <div className="flex items-center gap-2">
                     <Sparkles size={16} className="text-cyan-400" />
                 </div>
-                <span className="text-xs text-gray-400">{sharpen}</span>
+                <span className="text-xs text-gray-400">{editorState.sharpen}</span>
                 </button>
 
                 <button
@@ -128,7 +128,7 @@ export default function EditingOptions({setSelectedEditOption, selectedEditOptio
                 <div className="flex items-center gap-2">
                     <Palette size={16} className="text-orange-400" />
                 </div>
-                <span className="text-xs text-gray-400">{hue}°</span>
+                <span className="text-xs text-gray-400">{editorState.hue}°</span>
                 </button>
             </div>
             </div>

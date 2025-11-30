@@ -1,6 +1,70 @@
 import { Sun, Contrast, Droplet, Sparkles, RotateCw, ImageIcon, Palette, X} from "lucide-react";
+import { useRef, useState } from "react";
 
-export default function EditSlider({selectedEditOption, brightness, contrast, saturation, blur, rotation, opacity, sharpen, hue, setBrightness, setContrast, setSaturation, setBlur, setRotation, setOpacity, setSharpen, setHue, setSelectedEditOption}){
+// Command class for EditSlider
+class Command {
+  constructor(doFn, undoFn) {
+    this.do = doFn;
+    this.undo = undoFn;
+  }
+}
+
+export default function EditSlider({selectedEditOption, editorState, execute, setSelectedEditOption}){
+    const [isDragging, setIsDragging] = useState(false);
+    const startValueRef = useRef(null);
+
+    const getValue = () => {
+        if (selectedEditOption === 'brightness') return editorState.brightness;
+        if (selectedEditOption === 'contrast') return editorState.contrast;
+        if (selectedEditOption === 'saturation') return editorState.saturation;
+        if (selectedEditOption === 'blur') return editorState.blur;
+        if (selectedEditOption === 'rotation') return editorState.rotation;
+        if (selectedEditOption === 'opacity') return editorState.opacity;
+        if (selectedEditOption === 'sharpen') return editorState.sharpen;
+        if (selectedEditOption === 'hue') return editorState.hue;
+        return 0;
+    };
+
+    const handleSliderStart = () => {
+        setIsDragging(true);
+        startValueRef.current = getValue();
+    };
+
+    const handleSliderEnd = () => {
+        if (isDragging && startValueRef.current !== null) {
+            const currentValue = getValue();
+            const startValue = startValueRef.current;
+            
+            // Only create command if value actually changed
+            if (startValue !== currentValue) {
+                execute(new Command(
+                    (s) => ({ ...s, [selectedEditOption]: currentValue }),
+                    (s) => ({ ...s, [selectedEditOption]: startValue })
+                ), false); // false - add to history immediately, not debounced
+            }
+        }
+        setIsDragging(false);
+        startValueRef.current = null;
+    };
+
+    const handleChange = (value) => {
+        if (isDragging) {
+            // During dragging, update state immediately for visual feedback
+            // but don't add to history (that happens in handleSliderEnd)
+            execute(new Command(
+                (s) => ({ ...s, [selectedEditOption]: value }),
+                (s) => ({ ...s, [selectedEditOption]: s[selectedEditOption] })
+            ), true); // true indicates this is a temporary slider command (debounced/ignored for history)
+        } else {
+            // Direct click/keyboard input - create command immediately
+            const oldValue = getValue();
+            execute(new Command(
+                (s) => ({ ...s, [selectedEditOption]: value }),
+                (s) => ({ ...s, [selectedEditOption]: oldValue })
+            ), false); // false - add to history immediately
+        }
+    };
+
     return (
         <div className="absolute bottom-7 left-1/2 transform -translate-x-1/2 bg-black/80 backdrop-blur-md border border-white/20 rounded-xl px-6 py-4 z-20 w-80 md:w-96">
             <div className="flex items-center justify-between mb-3">
@@ -17,14 +81,14 @@ export default function EditSlider({selectedEditOption, brightness, contrast, sa
                 </div>
                 <div className="flex items-center gap-3">
                 <span className="text-sm font-mono">
-                    {selectedEditOption === 'brightness' && `${brightness}%`}
-                    {selectedEditOption === 'contrast' && `${contrast}%`}
-                    {selectedEditOption === 'saturation' && `${saturation}%`}
-                    {selectedEditOption === 'blur' && `${blur}px`}
-                    {selectedEditOption === 'rotation' && `${rotation}°`}
-                    {selectedEditOption === 'opacity' && `${opacity}%`}
-                    {selectedEditOption === 'sharpen' && sharpen}
-                    {selectedEditOption === 'hue' && `${hue}°`}
+                    {selectedEditOption === 'brightness' && `${editorState.brightness}%`}
+                    {selectedEditOption === 'contrast' && `${editorState.contrast}%`}
+                    {selectedEditOption === 'saturation' && `${editorState.saturation}%`}
+                    {selectedEditOption === 'blur' && `${editorState.blur}px`}
+                    {selectedEditOption === 'rotation' && `${editorState.rotation}°`}
+                    {selectedEditOption === 'opacity' && `${editorState.opacity}%`}
+                    {selectedEditOption === 'sharpen' && editorState.sharpen}
+                    {selectedEditOption === 'hue' && `${editorState.hue}°`}
                 </span>
                 <button
                     onClick={() => setSelectedEditOption(null)}
@@ -39,26 +103,14 @@ export default function EditSlider({selectedEditOption, brightness, contrast, sa
                 type="range"
                 min={selectedEditOption === 'blur' ? 0 : selectedEditOption === 'opacity' ? 0 : selectedEditOption === 'sharpen' ? 0 : selectedEditOption === 'rotation' || selectedEditOption === 'hue' ? 0 : 0}
                 max={selectedEditOption === 'blur' ? 20 : selectedEditOption === 'opacity' ? 100 : selectedEditOption === 'sharpen' ? 100 : selectedEditOption === 'rotation' || selectedEditOption === 'hue' ? 360 : 200}
-                value={
-                selectedEditOption === 'brightness' ? brightness :
-                selectedEditOption === 'contrast' ? contrast :
-                selectedEditOption === 'saturation' ? saturation :
-                selectedEditOption === 'blur' ? blur :
-                selectedEditOption === 'rotation' ? rotation :
-                selectedEditOption === 'opacity' ? opacity :
-                selectedEditOption === 'sharpen' ? sharpen :
-                selectedEditOption === 'hue' ? hue : 0
-                }
+                value={getValue()}
+                onMouseDown={handleSliderStart}
+                onTouchStart={handleSliderStart}
+                onMouseUp={handleSliderEnd}
+                onTouchEnd={handleSliderEnd}
                 onChange={(e) => {
-                const value = parseInt(e.target.value);
-                if (selectedEditOption === 'brightness') setBrightness(value);
-                else if (selectedEditOption === 'contrast') setContrast(value);
-                else if (selectedEditOption === 'saturation') setSaturation(value);
-                else if (selectedEditOption === 'blur') setBlur(value);
-                else if (selectedEditOption === 'rotation') setRotation(value);
-                else if (selectedEditOption === 'opacity') setOpacity(value);
-                else if (selectedEditOption === 'sharpen') setSharpen(value);
-                else if (selectedEditOption === 'hue') setHue(value);
+                    const value = parseInt(e.target.value);
+                    handleChange(value);
                 }}
                 className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer slider-thumb"
                 style={{
