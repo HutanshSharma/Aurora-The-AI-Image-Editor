@@ -10,3 +10,14 @@ python-jose[cryptography]
 email-validator
 pymongo[srv]==3.12
 Pillow
+
+# Flask backend dependencies
+flask
+flask-cors
+torch
+torchvision
+numpy
+opencv-python
+matplotlib
+requests
+timm
