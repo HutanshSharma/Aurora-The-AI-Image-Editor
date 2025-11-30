@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from .Routers import auth,user
+from .Routers import auth,user,segmentation_inpainting
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -18,3 +18,4 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(user.router)
+app.include_router(segmentation_inpainting.router)
