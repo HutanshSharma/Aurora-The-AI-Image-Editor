@@ -93,50 +93,21 @@ def _score_candidate(lowres_image: np.ndarray, cand: Dict[str, float]) -> float:
     return score_brightness + score_contrast  # rough combo
 
 
-USE_SERVER = True  # set True when using HTTP server / Modal
 
 
 def optimise_tone_colour(lowres_image: np.ndarray,
                          intent_vector: np.ndarray) -> Dict[str, float]:
     """
-    If USE_SERVER = True:
-      - send low-res image + candidates + intent_vector to HTTP server (future Modal)
-    Else:
-      - use local heuristic candidate search (current logic).
+    Pure local optimisation:
+      - generate candidates around the user's intent
+      - score them on low-res image
+      - return the best (brightness, contrast)
+
+    No HTTP, no server. This is exactly what a real app would run on-device
+    (with HDRNet-lite + heuristics).
     """
     candidates = _generate_candidates(intent_vector)
 
-    if USE_SERVER:
-        # --- future server path ---
-        payload = {
-            "image_base64": _encode_image_to_base64(lowres_image),
-            "candidates": [
-                {
-                    "brightness": float(c["brightness"]),
-                    "contrast": float(c["contrast"]),
-                    "lut_strength": float(c.get("lut_strength", 0.0)),
-                }
-                for c in candidates
-            ],
-            "intent_vector": intent_vector.tolist(),
-        }
-
-        api_url = os.environ.get("AI_API_URL", "http://localhost:8000/optimise")
-        headers = {"Content-Type": "application/json"}
-
-        resp = requests.post(
-            api_url, headers=headers, data=json.dumps(payload), timeout=10
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-        return {
-            "brightness": float(data["brightness"]),
-            "contrast": float(data["contrast"]),
-            # "lut_strength": float(data["lut_strength"]),  # later, when we use LUT
-        }
-
-    # --- local heuristic fallback (what you already had) ---
     best_score = -1e9
     best_cand = candidates[0]
 
@@ -148,5 +119,6 @@ def optimise_tone_colour(lowres_image: np.ndarray,
 
     return {
         "brightness": float(best_cand["brightness"]),
-        "contrast": float(best_cand["contrast"]),
+        "contrast":   float(best_cand["contrast"]),
     }
+
