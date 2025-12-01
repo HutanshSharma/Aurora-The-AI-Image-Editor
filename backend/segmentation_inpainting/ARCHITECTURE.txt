@@ -1,0 +1,235 @@
+ARCHITECTURE DIAGRAM
+====================
+
+Complete Image Editing Pipeline
+-------------------------------------
+
+┌───────────────────────────────────────────────────────────────┐
+│                      USER'S LOCAL MACHINE                     │
+├───────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  FRONTEND (React)                                       │  │
+│  │  - User uploads image                                   │  │
+│  │  - User clicks to select object                         │  │
+│  │  - User enters prompt for editing                       │  │
+│  │  - Displays edited result                               │  │
+│  └──────────────────┬──────────────────────────────────────┘  │
+│                     │ HTTP Request                            │
+│                     ▼                                         │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  BACKEND (FastAPI)                                      │  │
+│  │  Routers/segmentation_inpainting.py                     │  │
+│  │                                                         │  │
+│  │  Routes:                                                │  │
+│  │  POST /editing/upload_image                             │  │
+│  │  POST /editing/apply_mask                               │  │
+│  │  POST /editing/qwen_edit        ← NEW                   │  │
+│  │  POST /editing/sdxl_inpaint     ← NEW                   │  │
+│  └──────────────────┬──────────────────────────────────────┘  │
+│                     │                                         │
+│                     ▼                                         │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  SEGMENTATION (MobileSAM)                               │  │
+│  │  app.ipynb                                              │  │
+│  │                                                         │  │
+│  │  1. Receives image + click coordinates                  │  │
+│  │  2. Runs MobileSAM to generate mask                     │  │
+│  │  3. Returns mask as base64                              │  │
+│  │                                                         │  │
+│  │  ✓ Runs locally (your GPU/CPU)                          │  │
+│  │  ✓ Fast (~1-2 seconds)                                  │  │
+│  │  ✓ No internet required                                 │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
+                            │
+                            │ HTTPS Request (image + mask + prompt)
+                            │
+                            ▼
+┌───────────────────────────────────────────────────────────────┐
+│                        MODAL CLOUD                            │
+├───────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  QWEN SERVER (GPU: A10G)                                │  │
+│  │  modal_qwen_server.py                                   │  │
+│  │                                                         │  │
+│  │  Endpoints:                                             │  │
+│  │  • /white-to-scene-endpoint                             │  │
+│  │    - Uses Qwen + White-to-Scene LoRA                    │  │
+│  │    - Converts white backgrounds to scenes               │  │
+│  │                                                         │  │
+│  │  • /fusion-endpoint                                     │  │
+│  │    - Uses Qwen + Fusion LoRA                            │  │
+│  │    - Blends new elements seamlessly                     │  │
+│  │                                                         │  │
+│  │  Models (auto-downloaded by Modal):                     │  │
+│  │  - Qwen/Qwen-Edit-2509                                  │  │
+│  │  - dx8152/Qwen-Image-Edit-2509-White_to_Scene           │  │
+│  │  - dx8152/Qwen-Image-Edit-2509-Fusion                   │  │
+│  │                                                         │  │
+│  │  ✓ Auto-scales (0 to N containers)                      │  │
+│  │  ✓ Pay per use (~$2.50/hour when running)               │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │  SDXL SERVER (GPU: A10G)                                │  │
+│  │  modal_sdxl_server.py                                   │  │
+│  │                                                         │  │
+│  │  Endpoints:                                             │  │
+│  │  • /inpaint-endpoint                                    │  │
+│  │    - Uses SDXL for inpainting                           │  │
+│  │    - High-quality mask-based editing                    │  │
+│  │    - Supports custom LoRAs                              │  │
+│  │                                                         │  │
+│  │  Models (auto-downloaded by Modal):                     │  │
+│  │  - stabilityai/stable-diffusion-xl-base-1.0             │  │
+│  │  - Custom LoRAs (if configured)                         │  │
+│  │                                                         │  │
+│  │  ✓ Auto-scales (0 to N containers)                      │  │
+│  │  ✓ Pay per use (~$0.50/hour when running)               │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
+                            │
+                            │ HTTPS Response (edited image base64)
+                            │
+                            ▼
+                    (Back to Frontend)
+
+
+DATA FLOW EXAMPLE
+=================
+
+User wants to change cat's background to a living room:
+
+1. User clicks on cat in frontend
+   ↓
+2. Frontend sends click to backend /editing/apply_mask
+   ↓
+3. Backend runs MobileSAM (local or our machine backend) → generates cat mask
+   ↓
+4. Frontend displays mask preview to user
+   ↓
+5. User enters prompt: "cozy living room with plants"
+   ↓
+6. Frontend sends to backend /editing/qwen_edit
+   ↓
+7. Backend forwards to Modal (Qwen white-to-scene endpoint)
+   Request: {
+     image_base64: "...",
+     mask_base64: "...",
+     prompt: "cozy living room with plants"
+   }
+   ↓
+8. Modal runs Qwen inference (~5-10 seconds)
+   ↓
+9. Modal returns edited image
+   ↓
+10. Backend forwards to frontend
+    ↓
+11. Frontend displays result to user
+
+
+MODEL CAPABILITIES BREAKDOWN
+=============================
+
+┌─────────────────────┬───────────────────────┬─────────────────────┐
+│   QWEN WHITE-2-SCENE│    QWEN FUSION        │   SDXL INPAINTING   │
+├─────────────────────┼───────────────────────┼─────────────────────┤
+│ Best for:           │ Best for:             │ Best for:           │
+│ • White backgrounds │ • Adding objects      │ • General inpainting│
+│   to scenes         │ • Blending elements   │ • Object removal    │
+│ • Product photos    │ • Artistic fusion     │ • Object replacement│
+│ • Portrait BGs      │ • Natural integration │ • Creative edits    │
+│                     │                       │ • Custom styles     │
+│ Speed: ~5-10s       │ Speed: ~5-10s         │ Speed: ~3-8s        │
+│ GPU: A100           │ GPU: A100             │ GPU: A10G           │
+│ Cost: $2.50/hr      │ Cost: $2.50/hr        │ Cost: $0.50/hr      │
+└─────────────────────┴───────────────────────┴─────────────────────┘
+
+
+COST CALCULATION EXAMPLE
+=========================
+
+Scenario: 100 image edits per day
+
+Assumptions:
+- 50% use Qwen (5s each)
+- 50% use SDXL (5s each)
+- Container stays warm 2 hours/day
+
+Qwen:
+  50 edits × 5s = 250s = 0.07 hours
+  0.07 × $2.50 = $0.175/day
+
+SDXL:
+  50 edits × 5s = 250s = 0.07 hours
+  0.07 × $0.50 = $0.035/day
+
+Warm time:
+  Qwen: 2 hours × $2.50 = $5/day
+  SDXL: 2 hours × $0.50 = $1/day
+
+Total: ~$6.21/day = ~$186/month
+
+With free $30 credit: First ~5 days free!
+
+To reduce costs:
+- Lower container_idle_timeout (containers shut down faster)
+- Use A10G for both (slower but cheaper)
+- Batch requests (process multiple at once)
+
+
+FILE STRUCTURE SUMMARY
+======================
+
+segmentation_inpainting/
+├── app.ipynb                    # Local segmentation (MobileSAM)
+├── mobile_sam.pt                # MobileSAM weights
+├── utils.py                     # Helper functions
+├── test.py                      # Test segmentation locally
+│
+├── modal_qwen_server.py         # 🚀 DEPLOY THIS - Qwen server
+├── modal_sdxl_server.py         # 🚀 DEPLOY THIS - SDXL server
+├── modal_requirements.txt       # Local dependencies for Modal
+│
+├── test_modal_client.py         # Test Modal endpoints
+├── README_MODAL.txt             # Quick start guide
+├── DEPLOYMENT_GUIDE.txt         # Detailed deployment guide
+└── ARCHITECTURE.txt             # This file
+
+To deploy:
+  modal deploy modal_qwen_server.py
+  modal deploy modal_sdxl_server.py
+
+
+NEXT STEPS
+==========
+
+1. Install Modal:
+   pip install modal
+
+2. Authenticate:
+   modal token new
+
+3. Deploy servers:
+   modal deploy modal_qwen_server.py
+   modal deploy modal_sdxl_server.py
+
+4. Get your URLs from Modal output
+
+5. Update test_modal_client.py with your URLs
+
+6. Test:
+   python test_modal_client.py
+
+7. Integrate with your FastAPI backend:
+   - Add endpoints in Routers/segmentation_inpainting.py
+   - Call Modal URLs with requests library
+   - See test_modal_client.py for examples
+
+8. Update frontend to call new backend endpoints
+
+9. Done!
