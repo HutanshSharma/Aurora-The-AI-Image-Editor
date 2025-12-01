@@ -11,6 +11,7 @@ email-validator
 pymongo[srv]==3.12
 Pillow
 motor
+modal
 
 # Flask backend dependencies
 flask

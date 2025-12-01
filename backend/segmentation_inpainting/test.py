@@ -22,7 +22,7 @@ import os
 import urllib.request
 import sys
 
-PORT = 8000
+PORT = 8001
 BASE_URL = f"http://localhost:{PORT}/editing"
 
 print("=" * 70)

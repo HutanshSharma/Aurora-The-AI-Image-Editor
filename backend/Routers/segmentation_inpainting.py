@@ -2,6 +2,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import uuid
 import torch
+import base64
+import io
+from PIL import Image
 from ..segmentation_inpainting.utils import (
     decode_base64_image, 
     encode_mask_to_base64,
@@ -121,8 +124,6 @@ def extract_object(req: ExtractObjectRequest):
         if "," in mask_base64_clean:
             mask_base64_clean = mask_base64_clean.split(",")[1]
         
-        from PIL import Image
-        import io
         mask_bytes = base64.b64decode(mask_base64_clean)
         mask_image = Image.open(io.BytesIO(mask_bytes)).convert("L")
         mask_array = np.array(mask_image) > 127  # Convert to boolean
