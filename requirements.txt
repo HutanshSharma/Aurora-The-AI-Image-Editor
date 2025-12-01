@@ -23,3 +23,19 @@ opencv-python
 matplotlib
 requests
 timm
+
+#2nd feature dependencies
+certifi==2025.11.12
+charset-normalizer==3.4.4
+colorama==0.4.6
+idna==3.11
+iniconfig==2.3.0
+numpy==2.3.5
+packaging==25.0
+pillow==12.0.0
+pluggy==1.6.0
+Pygments==2.19.2
+pytest==9.0.1
+requests==2.32.5
+urllib3==2.5.0
+
