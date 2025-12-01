@@ -28,3 +28,12 @@ __pycache__/
 env
 /images
 cat.jpg
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Images
+*.jpg
+*.jpeg
+*.png
