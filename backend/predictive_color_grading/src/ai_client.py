@@ -95,30 +95,19 @@ def _score_candidate(lowres_image: np.ndarray, cand: Dict[str, float]) -> float:
 
 
 
-def optimise_tone_colour(lowres_image: np.ndarray,
-                         intent_vector: np.ndarray) -> Dict[str, float]:
-    """
-    Pure local optimisation:
-      - generate candidates around the user's intent
-      - score them on low-res image
-      - return the best (brightness, contrast)
-
-    No HTTP, no server. This is exactly what a real app would run on-device
-    (with HDRNet-lite + heuristics).
-    """
+def optimise_tone_colour(lowres_image, intent_vector):
     candidates = _generate_candidates(intent_vector)
 
     best_score = -1e9
-    best_cand = candidates[0]
+    best = candidates[0]
 
     for cand in candidates:
         score = _score_candidate(lowres_image, cand)
         if score > best_score:
             best_score = score
-            best_cand = cand
+            best = cand
 
     return {
-        "brightness": float(best_cand["brightness"]),
-        "contrast":   float(best_cand["contrast"]),
+        "brightness": float(best["brightness"]),
+        "contrast": float(best["contrast"]),
     }
-
