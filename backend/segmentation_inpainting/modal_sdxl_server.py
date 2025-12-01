@@ -36,23 +36,19 @@ app = modal.App("sdxl-inpainting-server")
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
-        "torch==2.1.0",
-        "torchvision==0.16.0",
+        "numpy<2.0.0",  # Pin to 1.x for compatibility
+        "torch==2.5.1",
+        "torchvision==0.20.1",
         "diffusers>=0.25.0",
         "transformers>=4.37.0",
         "accelerate>=0.25.0",
         "peft>=0.8.0",  # For LoRA support
         "pillow>=10.0.0",
-        "numpy>=1.24.0",
         "safetensors>=0.4.0",
         "compel>=2.0.0",  # For advanced prompt weighting
         "fastapi",  # Required for web endpoints
     )
 )
-
-# GPU configuration
-# A10G is cheaper and good enough for SDXL, A100 is faster
-GPU_CONFIG = "a10g"
 
 # Base SDXL model
 SDXL_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -68,7 +64,7 @@ CUSTOM_LORAS = [
 
 @app.cls(
     image=image,
-    gpu=GPU_CONFIG,
+    gpu="A10G",  # Use A10G GPU (24GB VRAM) - change to "A100" for production
     timeout=600,
     scaledown_window=120,  # Keep warm for 2 minutes (cost optimization)
 )

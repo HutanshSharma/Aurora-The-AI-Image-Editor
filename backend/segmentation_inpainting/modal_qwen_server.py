@@ -33,33 +33,29 @@ app = modal.App("qwen-image-edit-server")
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
-        "torch==2.1.0",
-        "torchvision==0.16.0",
+        "numpy<2.0.0",  # Pin to 1.x for compatibility
+        "torch==2.5.1",
+        "torchvision==0.20.1",
         "transformers>=4.37.0",
         "diffusers>=0.25.0",
         "accelerate>=0.25.0",
         "peft>=0.8.0",  # For LoRA support
         "pillow>=10.0.0",
-        "numpy>=1.24.0",
         "safetensors>=0.4.0",
         "fastapi",  # Required for web endpoints
     )
 )
 
-# Define GPU configuration
-# Using A10G for cost efficiency - A100 is 5x more expensive
-# For a demo/development, A10G is sufficient (change to this a100 in final demo)
-GPU_CONFIG = "a10g"
-
 # Model and LoRA configurations
-QWEN_MODEL_ID = "Qwen/Qwen-Edit-2509"  # Base model
+# Using SDXL as base model since the LoRAs are trained on diffusion models
+BASE_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 LORA_WHITE_TO_SCENE = "dx8152/Qwen-Image-Edit-2509-White_to_Scene"
 LORA_FUSION = "dx8152/Qwen-Image-Edit-2509-Fusion"
 
 
 @app.cls(
     image=image,
-    gpu=GPU_CONFIG,
+    gpu="A10G",  # Use A10G GPU (24GB VRAM) - change to "A100" for production
     timeout=600,  # 10 minutes timeout for long-running inference
     scaledown_window=120,  # Keep warm for 2 minutes (cost optimization)
 )
@@ -72,45 +68,22 @@ class QwenImageEditor:
     The @method decorators create HTTP endpoints for inference.
     """
     
-    @modal.enter()  # Runs during container startup to load models
-    def download_models(self):
-        """
-        Pre-download models during image build phase.
-        This makes cold starts faster since models are already cached.
-        """
-        from transformers import AutoModel, AutoTokenizer
-        from diffusers import AutoPipelineForImage2Image
-        
-        print("📥 Downloading Qwen base model...")
-        # This downloads and caches the base model
-        AutoModel.from_pretrained(
-            QWEN_MODEL_ID,
-            trust_remote_code=True,
-            cache_dir="/cache"
-        )
-        
-        print("📥 Downloading LoRA adapters...")
-        # Pre-download LoRA weights (they're small, ~100MB each)
-        for lora_id in [LORA_WHITE_TO_SCENE, LORA_FUSION]:
-            print(f"  - {lora_id}")
-            # LoRAs are downloaded when we call load_lora_weights later
-    
     @modal.enter()  # Runs when container starts (once per container)
     def load_base_model(self):
         """
-        Load the base Qwen model into GPU memory.
+        Load the base SDXL model into GPU memory with LoRA support.
         This runs once when the container spins up.
         """
         import torch
         from diffusers import AutoPipelineForImage2Image
         
-        print("🚀 Loading Qwen base model into GPU memory...")
+        print("🚀 Loading SDXL base model into GPU memory...")
         
-        # Load the base image-to-image pipeline
+        # Load the base image-to-image pipeline (SDXL)
         self.pipe = AutoPipelineForImage2Image.from_pretrained(
-            QWEN_MODEL_ID,
+            BASE_MODEL_ID,
             torch_dtype=torch.float16,  # Use FP16 for faster inference
-            trust_remote_code=True,
+            variant="fp16",
             cache_dir="/cache",
         ).to("cuda")
         
