@@ -1,0 +1,185 @@
+@import "tailwindcss";
+
+.form-wrapper {
+  position: relative;
+  width: 100%;
+  min-height: 500px;
+}
+
+.plasma-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+canvas {
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.form {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  opacity: 0;
+  transform: translateX(40px);
+  transition: all 0.5s ease;
+  pointer-events: none;
+}
+
+.form.active {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+  z-index: 2;
+}
+
+.login-form:not(.active),
+.signup-form:not(.active) {
+  transform: translateX(-40px);
+  z-index: 1;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+    }
+    to {
+        transform: translateX(0);
+}
+}
+
+@keyframes shrink {
+    from {
+        width: 100%;
+    }
+    to {
+        width: 0;
+}
+}
+
+.animate-slideIn {
+animation: slideIn 0.5s ease-out forwards;
+}
+
+.animate-shrink {
+animation: shrink 5s linear forwards;
+}
+
+#croptype {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.light-rays-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  pointer-events: none;
+  z-index: 3;
+  overflow: hidden;
+}
+
+.loader{
+  border: 5px solid rgba(255, 255, 255, 0.3);
+  border-top: 5px solid #FF3366;
+  border-radius: 60%;
+  width: 120px;
+  height: 120px;
+  animation: spin 1s linear infinite;
+  padding: 4em;
+}
+
+.loading-screen{
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  backdrop-filter: blur(10px);
+  background: black;;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.popup {
+  background: #fff;
+  position: absolute;
+  width:300px;
+  top: 0;
+  z-index:30;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.1);
+  text-align: center;
+  color: #333;
+  visibility: hidden;
+  transition: all 0.4s ease;
+}
+.open-popup {
+  visibility: visible;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(1);
+}
+.close-popup {
+  visibility: visible;
+  transform: translate(-50%, -50%) scale(0.1);
+  top: 0;
+  transition: all 0.4s ease;
+}
+.hide {
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, -50%) scale(0.1);
+}
+.popup button {
+  position: absolute;
+  padding: 16px;
+  top:-15px;
+  right:-15px;
+  background: rgba(255,2,2,0.9);
+  font-size: 18px;
+  cursor: pointer;
+  box-shadow: 0 5px 10px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
