@@ -1,8 +1,8 @@
-import { runPredictiveBranch } from './Predictive-color-grading/color-grading-src/predictive_core.js';
+import { runPredictiveBranch } from '../../ColorGradingUtils/predictive_core.js';
 import { useState, useEffect, useMemo } from 'react';
 import { History, X, GitBranch, Check, Save, Sparkles } from 'lucide-react';
-import { parseHistory } from '../../utils/historyParser';
-import { applyLUT, parseCubeLUT } from './LUTUtils';
+import { parseHistory } from '../../../utils/historyParser.js';
+import { applyLUT, parseCubeLUT } from '../Utils/LUTUtils.js';
 import ClipLoader from "react-spinners/HashLoader";
 
 const HistoryViewer = ({ 

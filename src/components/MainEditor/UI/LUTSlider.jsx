@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, Check } from 'lucide-react';
-import { getAvailableLUTs } from './LUTUtils';
+import { getAvailableLUTs } from '../Utils/LUTUtils';
 
 export default function LUTSlider({ onSelect, currentLUT, onClose }) {
   const [luts, setLuts] = useState([]);

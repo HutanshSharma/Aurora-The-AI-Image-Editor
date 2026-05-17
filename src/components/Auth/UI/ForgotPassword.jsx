@@ -1,4 +1,4 @@
-import handleChangePassword from "./handleChangePassword"
+import handleChangePassword from "../handlers/handleChangePassword"
 import { MailCheck } from "lucide-react"
 
 export default function ForgotPassword({setForgotPasswordData,forgotpasswordData,setIsLogin,setisPasswordChange,addToast}){

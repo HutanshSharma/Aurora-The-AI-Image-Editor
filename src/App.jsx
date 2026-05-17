@@ -1,9 +1,9 @@
 import { useState, lazy, Suspense } from "react";
 import Toast from "./components/Toast";
-const AuthPage = lazy(() => import("./components/Auth/Auth"));
-const ResetPassword = lazy(() => import("./components/Auth/ResetPassword"));
-const VerifyEmail = lazy(() => import("./components/Auth/VerifyEmail"));
-const Editor = lazy(()=>import("./components/ImageEditor/Editor"))
+const AuthPage = lazy(() => import("./components/Auth/UI/Auth"));
+const ResetPassword = lazy(() => import("./components/Auth/UI/ResetPassword"));
+const VerifyEmail = lazy(() => import("./components/Auth/UI/VerifyEmail"));
+const Editor = lazy(()=>import("./components/MainEditor/UI/Editor"))
 import { Routes, Route, Navigate, useLocation} from "react-router-dom"
 import ClipLoader from "react-spinners/HashLoader"
 import { UserProvider, useUser } from "./store/UserContext";

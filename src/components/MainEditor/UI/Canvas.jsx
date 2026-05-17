@@ -1,9 +1,9 @@
 import { useRef, useEffect, useState } from "react";
 import { ZoomIn, Hand, MousePointerClick } from "lucide-react";
-import { handleWheel, handleTouchMovePinch, handleTouchEndPinch, handlePanStart, handlePanMove, handlePanEnd, startLongPress , clearLongPress, maybeCancelLongPressOnMove, handleObjectDrop, handleObjectDrag} from "./CanvasUtils";
-import { applyLUT } from "./LUTUtils";
+import { handleWheel, handleTouchMovePinch, handleTouchEndPinch, handlePanStart, handlePanMove, handlePanEnd, startLongPress , clearLongPress, maybeCancelLongPressOnMove, handleObjectDrop, handleObjectDrag} from "../Utils/CanvasUtils";
+import { applyLUT } from "../Utils/LUTUtils";
 import PixelCard from "./PixelCard";
-import { getSegmentAtPoint, extractSegment } from "./SegmentationAPI";
+import { getSegmentAtPoint, extractSegment } from "../Utils/SegmentationAPI";
 
 export default function Canvas({
   setShowDropBox,

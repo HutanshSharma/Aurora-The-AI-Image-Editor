@@ -1,5 +1,5 @@
 import { Upload, X } from "lucide-react";
-import { uploadAndSegment, imageToBase64 } from "./SegmentationAPI";
+import { uploadAndSegment, imageToBase64 } from "../Utils/SegmentationAPI";
 
 export default function ImageUpload({setUploadedImage, handleImageUpload, closePopup, popupState, setIsSegmenting, setSegmentationImageId}){
     const handleFileUpload = async (e) => {

@@ -1,6 +1,6 @@
 import {Mic, Send, Volume2} from "lucide-react"
 import { useState, useRef, useEffect } from "react"
-import { processCommand, processCommandWithAI} from "./CommandInputUtils"
+import { processCommand, processCommandWithAI} from "../Utils/CommandInputUtils"
 
 export default function CommandInput({selectedObject, className, execute, editorState, Command}){
     const [isListening, setIsListening] = useState(false)

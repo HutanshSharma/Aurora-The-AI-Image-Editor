@@ -1,5 +1,5 @@
 import {FlipHorizontal, FlipVertical, Palette} from "lucide-react"
-import EditingOptions from "./SegmentEditor/EditingOptions";
+import EditingOptions from "../../SegmentEditor/UI/EditingOptions";
 
 export default function EditingSidebar({setSelectedEditOption, selectedEditOption, editorState, setShowEditingSidebar, downloadImage, resetFilters, execute, Command, setShowLUTSelector}){
     return (

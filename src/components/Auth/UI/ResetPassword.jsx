@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import RightPanel from './RightPanel';
-import handleResetPassword from './handleResetPassword';
+import handleResetPassword from '../handlers/handleResetPassword';
 import { LockKeyhole, Eye, EyeOff } from 'lucide-react';
 
 export default function ResetPassword({addToast}) {

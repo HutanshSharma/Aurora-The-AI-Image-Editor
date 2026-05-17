@@ -1,5 +1,5 @@
 import {ShieldUser, MailCheck, LockKeyhole, Eye, EyeOff} from 'lucide-react'
-import handleSignUp from './handleSignUp'
+import handleSignUp from '../handlers/handleSignUp'
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebookF } from "react-icons/fa";
 

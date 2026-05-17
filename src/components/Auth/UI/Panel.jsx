@@ -20,11 +20,7 @@ export default function Panel() {
       <div className="relative z-10 max-w-5xl w-full">
         <div className="bg-[rgba(0,0,0,0.7)] backdrop-blur-xl rounded-none border-l-4 border-red-600 shadow-2xl p-8" ref={info}>
             <h1 className="text-3xl md:text-8xl font-bold mb-8 text-white leading-[1.1] tracking-tight box">
-            Adobe Re-Imagining
-            <br />
-            <span className="bg-linear-to-r from-red-400 to-red-600 bg-clip-text text-transparent box">
-            Photoshop
-            </span>
+            Aurora
             </h1>
 
             <h2 className="text-2xl md:text-5xl font-light text-red-300/90 box">

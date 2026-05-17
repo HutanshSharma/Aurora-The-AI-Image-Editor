@@ -1,21 +1,21 @@
 import { useState, useRef, useEffect } from 'react';
-import ErrorBoundary from '../ErrorBoundary';
-import ImageUpload from './ImageUpload';
-import Header from './Header';
-import Canvas from './Canvas';
-import CommandInput from './CommandInput';
-import AnimatedList from './AnimatedList';
-import DropBox from './DropBox';
-import SegmentEditor from './SegmentEditor/SegmentEditor';
-import EditSlider from './SegmentEditor/EditSlider';
-import useHistory from '../../hooks/useHistory';
-import { useUser } from '../../store/UserContext';
-import EditingSidebar from './EditingSidebar';
-import LUTSlider from './LUTSlider';
-import HistoryViewer from './HistoryViewer';
-import { loadLUT } from './LUTUtils.js';
-import { uploadAndSegment, imageToBase64 } from './SegmentationAPI.js';
-import watermarkImg from '../../assets/watermark.png';
+import ErrorBoundary from '../../ErrorBoundary.jsx';
+import ImageUpload from './ImageUpload.jsx';
+import Header from './Header.jsx';
+import Canvas from './Canvas.jsx';
+import CommandInput from './CommandInput.jsx';
+import AnimatedList from './AnimatedList/AnimatedList.jsx';
+import DropBox from './DropBox.jsx';
+import SegmentEditor from '../../SegmentEditor/UI/SegmentEditor.jsx';
+import EditSlider from '../../SegmentEditor/UI/EditSlider.jsx';
+import useHistory from '../../../hooks/useHistory.jsx';
+import { useUser } from '../../../store/UserContext.jsx';
+import EditingSidebar from './EditingSidebar.jsx';
+import LUTSlider from './LUTSlider.jsx';
+import HistoryViewer from './HistoryViewer.jsx';
+import { loadLUT } from '../Utils/LUTUtils.js';
+import { uploadAndSegment, imageToBase64 } from '../Utils/SegmentationAPI.js';
+import watermarkImg from '../../../assets/watermark.png';
 
 export class Command {
   constructor(doFn, undoFn) {

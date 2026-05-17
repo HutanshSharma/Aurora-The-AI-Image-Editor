@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import RightPanel from './RightPanel';
-import LoaderComp from '../LoaderComp';
+import LoaderComp from '../../../LoaderComp';
 import { useNavigate, useParams } from 'react-router-dom';
 
 export default function VerifyEmail({addToast}) {

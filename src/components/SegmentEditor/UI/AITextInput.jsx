@@ -271,7 +271,7 @@ export default function AITextInput({ onAIEdit, isProcessing, onClose, editorSta
   const handleSendCommand = async () => {
     if (textPrompt.trim()) {
       try {
-        const { processCommand, processCommandWithAI } = await import('../CommandInputUtils');
+        const { processCommand, processCommandWithAI } = await import('../../MainEditor/Utils/CommandInputUtils');
         
         const options = {};
         const success = aiModel && modelStatus === 'ready' 

@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { FlipHorizontal, FlipVertical, ZoomIn, Palette, Save } from "lucide-react";
-import {handleWheel, handleTouchMovePinch, handleTouchEndPinch, handlePanStart, handlePanMove, handlePanEnd} from "../CanvasUtils"
+import {handleWheel, handleTouchMovePinch, handleTouchEndPinch, handlePanStart, handlePanMove, handlePanEnd} from "../../MainEditor/Utils/CanvasUtils"
 import SegmentHeader from './SegmentHeader';
-import GalleryView from './GalleryView';
-import QuickActions from './QuickActions';
+import GalleryView from '../../SegmentEditor/UI/GalleryView';
+import QuickActions from '../../SegmentEditor/UI/QuickActions';
 import SegmentFooter from './SegmentFooter';
-import EditingOptions from './EditingOptions';
-import BackgroundPanel from './BackgroundPanel';
-import EditSlider from './EditSlider';
+import EditingOptions from '../../SegmentEditor/UI/EditingOptions';
+import BackgroundPanel from '../../SegmentEditor/UI/BackgroundPanel';
+import EditSlider from '../../SegmentEditor/UI/EditSlider';
 import useHistory from '../../../hooks/useHistory';
-import LUTSlider from '../LUTSlider';
-import { loadLUT, applyLUT } from '../LUTUtils';
+import LUTSlider from '../../MainEditor/UI/LUTSlider';
+import { loadLUT, applyLUT } from '../../MainEditor/Utils/LUTUtils';
 import { inpaintingAPI } from '../../../utils/inpaintingAPI';
 import ClipLoader from "react-spinners/HashLoader";
 
