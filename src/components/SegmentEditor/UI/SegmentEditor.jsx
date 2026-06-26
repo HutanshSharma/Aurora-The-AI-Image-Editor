@@ -11,6 +11,7 @@ import LUTSlider from '../../MainEditor/UI/LUTSlider';
 import CommandInput from '../../MainEditor/UI/CommandInput';
 import useHistory from '../../../hooks/useHistory';
 import { loadLUT, applyLUT } from '../../MainEditor/Utils/LUTUtils';
+import { qwenSmartEdit } from '../../MainEditor/Utils/AIEditAPI';
 
 export class Command {
   constructor(doFn, undoFn) {
@@ -261,6 +262,103 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
 
     ctx.restore();
   }, [currentObject, editorState, zoom, offset, canvasSize, viewMode, loadedLUT]);
+
+  const flattenSegmentComposite = () => {
+    const obj = currentObject;
+    if (!obj?.image?.complete) return null;
+    const out = document.createElement('canvas');
+    out.width = canvasSize.width;
+    out.height = canvasSize.height;
+    const ctx = out.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    if (editorState.customBackground && editorState.customBackground.complete) {
+      const bg = editorState.customBackground;
+      const bw = bg.naturalWidth || bg.width;
+      const bh = bg.naturalHeight || bg.height;
+      const cover = Math.max(out.width / bw, out.height / bh);
+      const bgW = bw * cover * editorState.backgroundScale;
+      const bgH = bh * cover * editorState.backgroundScale;
+      const bgX = (out.width - bgW) / 2 + editorState.backgroundPos.x;
+      const bgY = (out.height - bgH) / 2 + editorState.backgroundPos.y;
+      ctx.drawImage(bg, bgX, bgY, bgW, bgH);
+    } else if (editorState.backgroundColor) {
+      ctx.fillStyle = editorState.backgroundColor;
+      const bgW = out.width * editorState.backgroundScale;
+      const bgH = out.height * editorState.backgroundScale;
+      const bgX = (out.width - bgW) / 2 + editorState.backgroundPos.x;
+      const bgY = (out.height - bgH) / 2 + editorState.backgroundPos.y;
+      ctx.fillRect(bgX, bgY, bgW, bgH);
+    }
+
+    const source = segProcessedRef.current?.canvas || obj.image;
+    const fit = Math.min(out.width / obj.width, out.height / obj.height) * 0.7;
+    const imgW = obj.width * fit * editorState.imageScale;
+    const imgH = obj.height * fit * editorState.imageScale;
+    const imgX = (out.width - imgW) / 2 + editorState.imagePos.x;
+    const imgY = (out.height - imgH) / 2 + editorState.imagePos.y;
+    ctx.save();
+    ctx.translate(imgX + imgW / 2, imgY + imgH / 2);
+    if (editorState.flipH) ctx.scale(-1, 1);
+    if (editorState.flipV) ctx.scale(1, -1);
+    ctx.rotate((editorState.rotation * Math.PI) / 180);
+    ctx.translate(-(imgW / 2), -(imgH / 2));
+    const blurValue = Math.max(0, Math.min(20, editorState.blur || 0));
+    ctx.filter = blurValue > 0 ? `blur(${blurValue}px)` : 'none';
+    ctx.globalAlpha = editorState.opacity / 100;
+    ctx.drawImage(source, 0, 0, imgW, imgH);
+    ctx.restore();
+    return out;
+  };
+
+  const handleAICommand = async (prompt) => {
+    if (!currentObject?.image) return false;
+    showLoader('Applying AI edit…');
+    try {
+      const composite = flattenSegmentComposite();
+      if (!composite) return false;
+      const result = await qwenSmartEdit(composite, prompt);
+      if (result.available === false) {
+        addToast?.('AI editing isn’t available right now.', 'info');
+        return false;
+      }
+      if (result.success && result.image_base64) {
+        const img = await new Promise((resolve, reject) => {
+          const im = new Image();
+          im.onload = () => resolve(im);
+          im.onerror = () => reject(new Error('Failed to load AI result'));
+          im.src = result.image_base64;
+        });
+        const idx = selectedObjectIndex;
+        const prevImg = currentObject.image;
+        const prevBgColor = editorState.backgroundColor;
+        const prevCustomBg = editorState.customBackground;
+        execute(new Command(
+          (s) => {
+            const objs = [...s.editedObjects];
+            objs[idx] = { ...objs[idx], image: img };
+            return { ...s, editedObjects: objs, backgroundColor: null, customBackground: null };
+          },
+          (s) => {
+            const objs = [...s.editedObjects];
+            objs[idx] = { ...objs[idx], image: prevImg };
+            return { ...s, editedObjects: objs, backgroundColor: prevBgColor, customBackground: prevCustomBg };
+          },
+        ));
+        addToast?.('AI edit applied.', 'success');
+        return true;
+      }
+      addToast?.('AI edit failed — please try again.', 'error');
+      return false;
+    } catch (error) {
+      console.error('AI edit failed:', error);
+      addToast?.('AI edit failed — is the backend running?', 'error');
+      return false;
+    } finally {
+      hideLoader();
+    }
+  };
 
   const resetFilters = () => {
     execute(new Command(
@@ -645,6 +743,7 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
                   editorState={editorState}
                   Command={Command}
                   addToast={addToast}
+                  onAICommand={handleAICommand}
                 />
               </div>
             </div>

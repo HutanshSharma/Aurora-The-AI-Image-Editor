@@ -3,49 +3,47 @@ import { API_BASE } from '../../../utils/config';
 
 const API_BASE_URL = `${API_BASE}/editing`;
 
-async function compressImage(imageBase64, maxDimension = 1500) {
+const SEGMENT_MAX_DIM = 1500;
+
+function imageToBlob(img, maxDimension = SEGMENT_MAX_DIM) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onerror = () => reject(new Error('Failed to load image for compression'));
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let width = img.width;
-      let height = img.height;      
-      if (width > maxDimension || height > maxDimension) {
-        const ratio = Math.min(maxDimension / width, maxDimension / height);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }      
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);      
-      const format = (img.width > maxDimension || img.height > maxDimension) ? 'image/jpeg' : 'image/png';
-      const quality = 0.9;
-      const compressedBase64 = canvas.toDataURL(format, quality);
-      
-      resolve({
-        dataUrl: compressedBase64,
-        width: width,
-        height: height
-      });
-    };
-    img.src = imageBase64;
+    let width = img.width;
+    let height = img.height;
+    const resized = width > maxDimension || height > maxDimension;
+    if (resized) {
+      const ratio = Math.min(maxDimension / width, maxDimension / height);
+      width = Math.round(width * ratio);
+      height = Math.round(height * ratio);
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const mime = resized ? 'image/jpeg' : 'image/png';
+    canvas.toBlob(
+      (blob) =>
+        blob
+          ? resolve({ blob, width, height, resized, mime })
+          : reject(new Error('Failed to encode image for segmentation')),
+      mime,
+      0.92,
+    );
   });
 }
 
-export async function uploadAndSegment(imageBase64) {
+export async function uploadAndSegment(image) {
   try {
-    const compressed = await compressImage(imageBase64, 1500);
-    
-    const response = await fetch(compressed.dataUrl);
-    const blob = await response.blob();
+    const { blob, width, height, resized, mime } = await imageToBlob(image);
     const formData = new FormData();
-    formData.append('file', blob, 'image.png');
-    
+    formData.append('file', blob, mime === 'image/png' ? 'image.png' : 'image.jpg');
+
     const uploadResponse = await authFetch(`${API_BASE_URL}/upload_and_segment`, {
       method: 'POST',
-      body: formData
+      body: formData,
     });
 
     if (!uploadResponse.ok) {
@@ -54,13 +52,10 @@ export async function uploadAndSegment(imageBase64) {
       throw new Error(`HTTP error! status: ${uploadResponse.status}`);
     }
 
-    const result = await uploadResponse.json();    
-    return {
-      ...result,
-      compressedImage: compressed.dataUrl,
-      compressedWidth: compressed.width,
-      compressedHeight: compressed.height
-    };
+    const result = await uploadResponse.json();
+    // Return the same blob we uploaded so the caller can keep the on-screen
+    // image pixel-identical to what the backend segmented (coordinate sync).
+    return { ...result, blob, compressedWidth: width, compressedHeight: height, resized };
   } catch (error) {
     console.error('Error uploading and segmenting:', error);
     throw error;
@@ -114,13 +109,4 @@ export async function extractSegment(imageId, segmentIndex) {
     console.error('Error extracting segment:', error);
     throw error;
   }
-}
-
-export function imageToBase64(img) {
-  const canvas = document.createElement('canvas');
-  canvas.width = img.width;
-  canvas.height = img.height;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(img, 0, 0);
-  return canvas.toDataURL('image/png');
 }

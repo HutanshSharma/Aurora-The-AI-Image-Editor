@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, status, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from datetime import timedelta, datetime, timezone
 from typing import Annotated
 from pydantic import BaseModel, EmailStr
@@ -17,7 +17,6 @@ router = APIRouter(
 )
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
-# Base URL of the frontend, used to build reset/verify links in emails.
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

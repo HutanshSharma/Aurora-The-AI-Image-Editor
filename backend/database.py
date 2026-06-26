@@ -5,9 +5,6 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy import String, Boolean, ForeignKey
 
 load_dotenv()
-
-# SQLite by default — a single local file, no external cluster to maintain.
-# Override with DATABASE_URL if you ever want a different (async) database.
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./aurora.db")
 
 engine = create_async_engine(DATABASE_URL)

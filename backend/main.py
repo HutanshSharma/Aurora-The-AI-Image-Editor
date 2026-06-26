@@ -4,19 +4,14 @@ from .Routers import auth, segmentation,user, inpainting
 from fastapi.middleware.cors import CORSMiddleware
 from .database import init_db
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create the SQLite tables on startup if they don't exist yet.
     await init_db()
     yield
 
 
 app = FastAPI(lifespan=lifespan)
 
-# Explicit dev origins. `allow_origins=["*"]` together with
-# `allow_credentials=True` is an invalid/insecure combo (browsers reject it),
-# so list the actual frontend origins instead.
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",

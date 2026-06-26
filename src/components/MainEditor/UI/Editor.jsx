@@ -14,7 +14,8 @@ import AdjustBar from './AdjustBar.jsx';
 import LUTSlider from './LUTSlider.jsx';
 import HistoryViewer from './HistoryViewer.jsx';
 import { loadLUT } from '../Utils/LUTUtils.js';
-import { uploadAndSegment, imageToBase64 } from '../Utils/SegmentationAPI.js';
+import { uploadAndSegment } from '../Utils/SegmentationAPI.js';
+import { qwenSmartEdit } from '../Utils/AIEditAPI.js';
 import watermarkImg from '../../../assets/watermark.png';
 import { ArrowLeft } from 'lucide-react';
 
@@ -67,6 +68,8 @@ const Editor = ({ addToast }) => {
   const dropBoxRef = useRef(null);
   const pendingApplyRef = useRef(false);
   const applyTimeoutRef = useRef(null);
+  const flattenRef = useRef(null);
+  const registerFlattenRef = useRef((fn) => { flattenRef.current = fn; });
 
   const {
     state: editorState,
@@ -166,6 +169,11 @@ const Editor = ({ addToast }) => {
     }
   };
 
+  const loadNewImage = (img) => {
+    setUploadedImage(img);
+    setSegmentationImageId(null);
+  };
+
   const handleImageClick = async (imageItem) => {
     try {
       let imageData;
@@ -193,7 +201,7 @@ const Editor = ({ addToast }) => {
       }
       
       img.onload = () => {
-        setUploadedImage(img);
+        loadNewImage(img);
         setShowImages(false);
       };
       
@@ -208,7 +216,6 @@ const Editor = ({ addToast }) => {
   const uploadInputRef = useRef(null);
   const openPopup = () => {
     setShowAdjust(false);
-    // On phones the drag-and-drop sheet feels unnatural — open the native picker directly.
     if (typeof window !== 'undefined' && !window.matchMedia('(min-width: 768px)').matches) {
       uploadInputRef.current?.click();
       return;
@@ -348,16 +355,19 @@ const Editor = ({ addToast }) => {
     }
     setIsSegmenting(true);
     try {
-      const imageBase64 = imageToBase64(uploadedImage);
       const result = await Promise.race([
-        uploadAndSegment(imageBase64),
+        uploadAndSegment(uploadedImage),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Segmentation timed out')), 45000)),
       ]);
       setSegmentationImageId(result.image_id);
-      if (result.compressedImage && (result.compressedWidth !== uploadedImage.width || result.compressedHeight !== uploadedImage.height)) {
+      if (result.resized && result.blob) {
+        const url = URL.createObjectURL(result.blob);
         const compressedImg = new Image();
-        compressedImg.src = result.compressedImage;
-        compressedImg.onload = () => setUploadedImage(compressedImg);
+        compressedImg.onload = () => {
+          setUploadedImage(compressedImg);
+          URL.revokeObjectURL(url);
+        };
+        compressedImg.src = url;
       }
       addToast?.('Objects detected — long-press the image to select one.', 'success');
     } catch (error) {
@@ -365,6 +375,45 @@ const Editor = ({ addToast }) => {
       addToast?.('Segmentation failed — is the backend server running?', 'error');
     } finally {
       setIsSegmenting(false);
+    }
+  };
+
+  const applyAIEdit = (img) => {
+    setUploadedImage(img);
+    setSegmentationImageId(null);
+    setMergedSegments([]);
+    setHasUnsavedChanges(true);
+  };
+
+  const handleAICommand = async (prompt) => {
+    if (!uploadedImage) return false;
+    showLoader('Applying AI edit…');
+    try {
+      const composite = flattenRef.current?.() || uploadedImage;
+      const result = await qwenSmartEdit(composite, prompt);
+      if (result.available === false) {
+        addToast?.('AI editing isn’t available right now.', 'info');
+        return false;
+      }
+      if (result.success && result.image_base64) {
+        const img = await new Promise((resolve, reject) => {
+          const im = new Image();
+          im.onload = () => resolve(im);
+          im.onerror = () => reject(new Error('Failed to load AI result'));
+          im.src = result.image_base64;
+        });
+        applyAIEdit(img);
+        addToast?.('AI edit applied.', 'success');
+        return true;
+      }
+      addToast?.('AI edit failed — please try again.', 'error');
+      return false;
+    } catch (error) {
+      console.error('AI edit failed:', error);
+      addToast?.('AI edit failed — is the backend running?', 'error');
+      return false;
+    } finally {
+      hideLoader();
     }
   };
 
@@ -471,7 +520,7 @@ const Editor = ({ addToast }) => {
 
       <div>
         <ImageUpload
-          setUploadedImage={setUploadedImage}
+          setUploadedImage={loadNewImage}
           handleImageUpload={handleImageUpload}
           closePopup={closePopup}
           popupState={popupState}
@@ -523,6 +572,7 @@ const Editor = ({ addToast }) => {
               onDrawn={handleCanvasDrawn}
               addToast={addToast}
               onSegment={handleSegment}
+              registerFlatten={registerFlattenRef.current}
             />
 
             {showAdjust && uploadedImage && (
@@ -550,6 +600,7 @@ const Editor = ({ addToast }) => {
               editorState={editorState}
               Command={Command}
               addToast={addToast}
+              onAICommand={handleAICommand}
             />
           </div>
         )}

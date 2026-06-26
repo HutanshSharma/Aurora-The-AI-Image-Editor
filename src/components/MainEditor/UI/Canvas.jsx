@@ -30,6 +30,7 @@ export default function Canvas({
   onDrawn,
   addToast,
   onSegment,
+  registerFlatten,
 }) {
   const { showLoader, hideLoader } = useLoader();
   const canvasRef = useRef(null);
@@ -122,8 +123,8 @@ export default function Canvas({
   const [selectedSegments, setSelectedSegments] = useState([]);
   const [segmentOverlays, setSegmentOverlays] = useState([]);
   const [showGallery, setShowGallery] = useState(false);
-  const [segmentPreviews, setSegmentPreviews] = useState({}); // { index: LUT-applied dataURL }
-  const [pickedSegments, setPickedSegments] = useState(() => new Set()); // checked in the gallery
+  const [segmentPreviews, setSegmentPreviews] = useState({});  
+  const [pickedSegments, setPickedSegments] = useState(() => new Set()); 
   const [segmentingDots, setSegmentingDots] = useState('');
 
   const dragLatestRef = useRef({});
@@ -283,7 +284,6 @@ export default function Canvas({
         setDraggingObjectId(newObject.id);
         setShowDropBox(true);
         setDragClientPos({ x: clientX, y: clientY });
-        // Remove only the segments that were used (others stay selected).
         const usedIdx = new Set(segments.map((s) => s.index));
         setSelectedSegments((prev) => prev.filter((s) => !usedIdx.has(s.index)));
         setSegmentOverlays((prev) => prev.filter((o) => !usedIdx.has(o.id)));
@@ -303,6 +303,72 @@ export default function Canvas({
     const imgY = (canvas.height - imgHeight) / 2;
     return { scale, imgX, imgY, imgWidth, imgHeight };
   };
+
+  const flattenComposite = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !uploadedImage) return null;
+    const W = canvas.width;
+    const H = canvas.height;
+    const scale = Math.min(W / uploadedImage.width, H / uploadedImage.height);
+    const imgWidth = uploadedImage.width * scale;
+    const imgHeight = uploadedImage.height * scale;
+    const imgX = (W - imgWidth) / 2;
+    const imgY = (H - imgHeight) / 2;
+
+    const temp = document.createElement('canvas');
+    temp.width = W;
+    temp.height = H;
+    const ctx = temp.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    const source = processedRef.current?.canvas || uploadedImage;
+    const blurValue = Math.max(0, Math.min(20, editorState?.blur || 0));
+    ctx.save();
+    ctx.translate(imgX + imgWidth / 2, imgY + imgHeight / 2);
+    if (editorState?.flipH) ctx.scale(-1, 1);
+    if (editorState?.flipV) ctx.scale(1, -1);
+    ctx.rotate(((editorState?.rotation || 0) * Math.PI) / 180);
+    ctx.translate(-(imgWidth / 2), -(imgHeight / 2));
+    if ('filter' in ctx) ctx.filter = blurValue > 0 ? `blur(${blurValue}px)` : 'none';
+    ctx.globalAlpha = (editorState?.opacity || 100) / 100;
+    ctx.drawImage(source, 0, 0, imgWidth, imgHeight);
+    ctx.restore();
+
+    if (mergedSegments && mergedSegments.length > 0) {
+      mergedSegments.forEach((segment) => {
+        if (segment.image && segment.image.complete &&
+            segment.normalizedX !== undefined && segment.normalizedY !== undefined) {
+          ctx.drawImage(
+            segment.image,
+            imgX + segment.normalizedX * imgWidth,
+            imgY + segment.normalizedY * imgHeight,
+            segment.normalizedWidth * imgWidth,
+            segment.normalizedHeight * imgHeight,
+          );
+        }
+      });
+    }
+
+    objects.forEach((obj) => {
+      if (obj.image && obj.image.complete) {
+        ctx.drawImage(obj.image, obj.x, obj.y, obj.width, obj.height);
+      }
+    });
+
+    const out = document.createElement('canvas');
+    out.width = uploadedImage.width;
+    out.height = uploadedImage.height;
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = true;
+    octx.imageSmoothingQuality = 'high';
+    octx.drawImage(temp, imgX, imgY, imgWidth, imgHeight, 0, 0, out.width, out.height);
+    return out;
+  }, [uploadedImage, editorState, mergedSegments, objects]);
+
+  useEffect(() => {
+    registerFlatten?.(flattenComposite);
+  }, [registerFlatten, flattenComposite]);
 
   useEffect(() => {
     let cancelled = false;
@@ -381,6 +447,16 @@ export default function Canvas({
       if (interval) clearInterval(interval);
     };
   }, [isSegmenting]);
+
+  useEffect(() => {
+    if (!segmentationImageId) {
+      setSelectedSegments([]);
+      setSegmentOverlays([]);
+      setPickedSegments(new Set());
+      setShowGallery(false);
+      setIsSelectMode(false);
+    }
+  }, [segmentationImageId]);
 
   useEffect(() => {
     const preventBrowserZoom = (e) => {

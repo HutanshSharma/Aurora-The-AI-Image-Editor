@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from "react"
 import { processCommand, processCommandWithAI} from "../Utils/CommandInputUtils"
 import { cn } from "../../ui/cn"
 
-export default function CommandInput({selectedObject, className, execute, editorState, Command, addToast}){
+export default function CommandInput({selectedObject, className, execute, editorState, Command, addToast, onAICommand}){
     const [isListening, setIsListening] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [useWebSpeech, setUseWebSpeech] = useState(false)
@@ -229,23 +229,24 @@ export default function CommandInput({selectedObject, className, execute, editor
     }
 
     const handleSendCommand = async () => {
-        if (inputText.trim()) {
-            const options={}
-            
-            const success = aiModel && modelStatus === 'ready' 
-                ? await processCommandWithAI(inputText, execute, options, Command, editorState, aiModel)
-                : processCommand(inputText,execute, Command, editorState)
-            
-            if (success) {
-                setCommandFeedback('success')
-                setTimeout(() => setCommandFeedback(null), 2000)
-            } else {
-                setCommandFeedback('error')
-                setTimeout(() => setCommandFeedback(null), 3000)
-                if (addToast) addToast('This feature is currently unavailable.', 'error')
-            }
-            setInputText("")
+        const prompt = inputText.trim()
+        if (!prompt) return
+
+        const options = {}
+        const localSuccess = aiModel && modelStatus === 'ready'
+            ? await processCommandWithAI(inputText, execute, options, Command, editorState, aiModel)
+            : processCommand(inputText, execute, Command, editorState)
+
+        let success = localSuccess
+        if (!localSuccess && onAICommand) {
+            success = await onAICommand(prompt)
+        } else if (!localSuccess && addToast) {
+            addToast('This feature is currently unavailable.', 'error')
         }
+
+        setCommandFeedback(success ? 'success' : 'error')
+        setTimeout(() => setCommandFeedback(null), success ? 2000 : 3000)
+        setInputText("")
     }
 
     const handleKeyPress = (e) => {

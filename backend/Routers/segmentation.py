@@ -1,31 +1,45 @@
 from fastapi import APIRouter, HTTPException, File, UploadFile, Depends
 from pydantic import BaseModel
+from collections import OrderedDict
+import threading
 import uuid
-import torch
-import base64
 import io
+import torch
+import numpy as np
 from PIL import Image
+from mobile_sam import sam_model_registry, SamPredictor
 from .auth import get_current_user
 from ..segmentation_inpainting.utils import (
-    decode_base64_image, 
-    encode_mask_to_base64,
     extract_object_with_transparency,
     encode_image_to_base64,
-    place_object_on_background
 )
-import numpy as np
-from mobile_sam import sam_model_registry, SamPredictor
-import base64
-from PIL import Image
-import io
 
 router = APIRouter(
     tags=["/editing"],
     prefix="/editing",
     dependencies=[Depends(get_current_user)]
 )
-IMAGE_STORE = {}
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+MAX_STORED_IMAGES = 20
+IMAGE_STORE = OrderedDict()
+
+def store_image(image_id, data):
+    IMAGE_STORE[image_id] = data
+    IMAGE_STORE.move_to_end(image_id)
+    evicted = False
+    while len(IMAGE_STORE) > MAX_STORED_IMAGES:
+        IMAGE_STORE.popitem(last=False)
+        evicted = True
+    if evicted and DEVICE == "cuda":
+        torch.cuda.empty_cache()
+
+def get_stored_image(image_id):
+    """Fetch a stored image and mark it most-recently-used, or 404."""
+    if image_id not in IMAGE_STORE:
+        raise HTTPException(404, "Image ID not found")
+    IMAGE_STORE.move_to_end(image_id)
+    return IMAGE_STORE[image_id]
 
 @router.get("/health")
 def health_check():
@@ -48,26 +62,11 @@ mobile_sam_model.eval()
 
 predictor = SamPredictor(mobile_sam_model)
 print("Model loaded on:", DEVICE)
-
-class UploadImageRequest(BaseModel):
-    image: str
-
-class MaskRequest(BaseModel):
-    image_id: str
-    coordinates_list: list
-
-class ExtractObjectRequest(BaseModel):
-    image_id: str
-    mask_base64: str
+predictor_lock = threading.Lock()
 
 class ExtractSegmentRequest(BaseModel):
     image_id: str
     segment_index: int
-
-class PlaceObjectRequest(BaseModel):
-    object_base64: str 
-    background_image: str = None 
-    background_color: list = [255, 255, 255]
 
 class GetSegmentAtPointRequest(BaseModel):
     image_id: str
@@ -75,15 +74,18 @@ class GetSegmentAtPointRequest(BaseModel):
     y: int
 
 @router.post("/upload_and_segment")
-async def upload_and_segment(file: UploadFile = File(...)):
+def upload_and_segment(file: UploadFile = File(...)):
     """
     Upload image and automatically generate segmentation masks using grid sampling.
     Returns the original image and stores all segments for later retrieval.
+
+    Sync def on purpose: the grid sweep is multi-second CPU/GPU work, so FastAPI
+    runs it in the threadpool and the event loop stays free for other requests.
     """
     try:
         print(f"[SEGMENTATION] Received upload request")
         print(f"[SEGMENTATION] Filename: {file.filename}, Content-Type: {file.content_type}")
-        contents = await file.read()
+        contents = file.file.read()
         print(f"[SEGMENTATION] File size: {len(contents)} bytes")
         image = Image.open(io.BytesIO(contents))
         if image.mode == 'RGBA':
@@ -98,7 +100,6 @@ async def upload_and_segment(file: UploadFile = File(...)):
         original_size = image.size
         print(f"[SEGMENTATION] Original size: {original_size}")
         
-        # Use higher limit to preserve quality and coordinate accuracy
         max_dim = 2048
         if max(image.size) > max_dim:
             ratio = max_dim / max(image.size)
@@ -112,15 +113,10 @@ async def upload_and_segment(file: UploadFile = File(...)):
         image_id = str(uuid.uuid4())
         print(f"[SEGMENTATION] Generated image_id: {image_id}")
         
-        predictor.set_image(image_np)
-        print(f"[SEGMENTATION] Image set in predictor")
-        
         h, w = image_np.shape[:2]
-        # Dynamic grid points based on image size
-        # Larger images need MORE points for better segmentation accuracy
         image_area = h * w
         if image_area > 2000 * 2000:
-            grid_points = 40  # More points for very large images
+            grid_points = 40  
         elif image_area > 1500 * 1500:
             grid_points = 36
         elif image_area > 1000 * 1000:
@@ -128,73 +124,51 @@ async def upload_and_segment(file: UploadFile = File(...)):
         elif image_area > 500 * 500:
             grid_points = 28
         else:
-            grid_points = 24  # Fewer points for smaller images
-        
-        segments = []
-        segment_map = {} 
-        
+            grid_points = 24 
+
+        segment_map = {}
+
         y_coords = np.linspace(0, h - 1, grid_points, dtype=int)
         x_coords = np.linspace(0, w - 1, grid_points, dtype=int)
-        
-        print(f"[SEGMENTATION] Starting grid sampling with {grid_points}x{grid_points} points for {w}x{h} image")
-        
-        # Batch processing for GPU optimization
-        batch_size = 16  # Process multiple points at once
-        all_points = []
-        for y in y_coords:
-            for x in x_coords:
-                all_points.append([x, y])
-        
+        all_points = [[int(x), int(y)] for y in y_coords for x in x_coords]
         total_points = len(all_points)
-        print(f"[SEGMENTATION] Total points to process: {total_points}")
-        
-        # Process in batches for better GPU utilization
-        for batch_start in range(0, total_points, batch_size):
-            batch_end = min(batch_start + batch_size, total_points)
-            batch_points = all_points[batch_start:batch_end]
-            
-            # Process each point (SAM doesn't support true batching of different points)
-            for point in batch_points:
-                input_point = np.array([point])
-                input_label = np.array([1])
-                
-                with torch.no_grad():  # Disable gradient computation for inference
-                    masks, scores, _ = predictor.predict(
-                        point_coords=input_point,
+
+        print(f"[SEGMENTATION] Grid sampling {grid_points}x{grid_points} = {total_points} points for {w}x{h} image")
+        input_label = np.array([1])
+        with predictor_lock:
+            predictor.set_image(image_np)
+            print(f"[SEGMENTATION] Image set in predictor")
+            with torch.inference_mode():
+                for i, point in enumerate(all_points):
+                    masks, _, _ = predictor.predict(
+                        point_coords=np.array([point]),
                         point_labels=input_label,
                         multimask_output=False
                     )
-                
-                mask = masks[0]
-                score = scores[0]                
-                mask_hash = hash(mask.tobytes())
-                
-                if mask_hash not in segment_map:
-                    area = np.sum(mask)
-                    if area > 100:
-                        segment_map[mask_hash] = {
-                            'segmentation': mask,
-                            'area': int(area),
-                            'bbox': get_bbox_from_mask(mask),
-                            'predicted_iou': float(score)
-                        }
-            
-            if (batch_end) % 100 == 0 or batch_end == total_points:
-                print(f"[SEGMENTATION] Processed {batch_end}/{total_points} points")
-        
+                    mask = masks[0]
+                    mask_hash = hash(mask.tobytes())
+                    if mask_hash not in segment_map:
+                        area = int(np.sum(mask))
+                        if area > 100:
+                            segment_map[mask_hash] = {
+                                'segmentation': mask,
+                                'area': area,
+                                'bbox': get_bbox_from_mask(mask),
+                            }
+                    if (i + 1) % 100 == 0 or i + 1 == total_points:
+                        print(f"[SEGMENTATION] Processed {i + 1}/{total_points} points")
+
         segments = list(segment_map.values())
         segments = sorted(segments, key=lambda x: x['area'], reverse=True)
         
         print(f"[SEGMENTATION] Found {len(segments)} unique segments")
         
-        IMAGE_STORE[image_id] = {
+        store_image(image_id, {
             "image": image_np,
             "shape": image_np.shape[:2],
-            "original_size": original_size, 
-            "processed_size": image.size,     
             "segments": segments
-        }
-        
+        })
+
         print(f"[SEGMENTATION] Successfully stored image and segments")
         
         return {
@@ -222,109 +196,11 @@ def get_bbox_from_mask(mask):
     x_min, x_max = np.where(cols)[0][[0, -1]]
     return [int(x_min), int(y_min), int(x_max - x_min), int(y_max - y_min)]
 
-@router.post("/upload_image")
-def upload_image(req: UploadImageRequest):
-    """Legacy endpoint - just uploads without segmentation"""
-    try:
-        image_np = decode_base64_image(req.image)
-        image_id = str(uuid.uuid4())
-
-        IMAGE_STORE[image_id] = {
-            "image": image_np,
-            "shape": image_np.shape[:2]
-        }
-        return {
-            "message": "Image uploaded",
-            "image_id": image_id,
-            "size": image_np.shape
-        }
-
-    except Exception as e:
-        raise HTTPException(500, str(e))
-    
-@router.post("/apply_mask")
-def apply_mask(req: MaskRequest):
-    try:
-        if req.image_id not in IMAGE_STORE:
-            raise HTTPException(404, "Image ID not found")
-
-        if len(req.coordinates_list) == 0:
-            raise HTTPException(400, "No coordinates provided")
-
-        img_data = IMAGE_STORE[req.image_id]
-        img = img_data["image"]
-
-        predictor.set_image(img)
-
-        input_points = np.array(req.coordinates_list)
-        input_labels = np.array([1] * len(req.coordinates_list))
-
-        masks, scores, logits = predictor.predict(
-            point_coords=input_points,
-            point_labels=input_labels,
-            multimask_output=True
-        )
-
-        best_idx = np.argmax(scores)
-        best_mask = masks[best_idx]
-
-        mask_b64 = encode_mask_to_base64(best_mask)
-
-        return {
-            "mask_base64": mask_b64,
-            "score": float(scores[best_idx])
-        }
-
-    except Exception as e:
-        raise HTTPException(500, str(e))
-
-@router.post("/extract_object")
-def extract_object(req: ExtractObjectRequest):
-    """
-    Extract the masked object with transparent background.
-    This allows users to place the object on different backgrounds or use it for generative fill.
-    
-    Returns RGBA PNG with transparency where mask was False.
-    """
-    try:
-        if req.image_id not in IMAGE_STORE:
-            raise HTTPException(404, "Image ID not found")        
-        img_data = IMAGE_STORE[req.image_id]
-        img_rgb = img_data["image"]        
-        mask_base64_clean = req.mask_base64
-        if "," in mask_base64_clean:
-            mask_base64_clean = mask_base64_clean.split(",")[1]
-        
-        mask_bytes = base64.b64decode(mask_base64_clean)
-        mask_image = Image.open(io.BytesIO(mask_bytes)).convert("L")
-        mask_array = np.array(mask_image) > 127 
-        object_rgba = extract_object_with_transparency(img_rgb, mask_array)
-        object_base64 = encode_image_to_base64(object_rgba)
-        
-        return {
-            "success": True,
-            "object_base64": object_base64,
-            "size": object_rgba.size,
-            "message": "Object extracted with transparent background"
-        }
-    
-    except Exception as e:
-        raise HTTPException(500, str(e))
-
 @router.post("/extract_segment")
 def extract_segment(req: ExtractSegmentRequest):
-    """
-    Extract a pre-computed segment by its index.
-    Much faster than extract_object since it doesn't need to send mask back and forth.
-    """
+    """Extract a pre-computed segment by its index as a transparent RGBA PNG."""
     try:
-        if req.image_id not in IMAGE_STORE:
-            raise HTTPException(404, "Image ID not found")        
-        img_data = IMAGE_STORE[req.image_id]
-        
-        if "segments" not in img_data:
-            raise HTTPException(404, "No segments found for this image")
-        
+        img_data = get_stored_image(req.image_id)
         segments = img_data["segments"]
         if req.segment_index < 0 or req.segment_index >= len(segments):
             raise HTTPException(400, f"Invalid segment index {req.segment_index}, max is {len(segments)-1}")        
@@ -349,103 +225,20 @@ def extract_segment(req: ExtractSegmentRequest):
         traceback.print_exc()
         raise HTTPException(500, str(e))
 
-@router.post("/place_object")
-def place_object(req: PlaceObjectRequest):
-    """
-    Place a transparent object on a background.
-    
-    Use cases:
-    - Place extracted object on white canvas
-    - Place extracted object on another image
-    - Prepare composite for generative fill (SDXL)
-    """
-    try:
-        object_base64_clean = req.object_base64
-        if "," in object_base64_clean:
-            object_base64_clean = object_base64_clean.split(",")[1]
-                        
-        object_bytes = base64.b64decode(object_base64_clean)
-        object_rgba = Image.open(io.BytesIO(object_bytes)).convert("RGBA")        
-        background_rgb = None
-        if req.background_image:
-            bg_base64_clean = req.background_image
-            if "," in bg_base64_clean:
-                bg_base64_clean = bg_base64_clean.split(",")[1]
-            
-            bg_bytes = base64.b64decode(bg_base64_clean)
-            background_rgb = Image.open(io.BytesIO(bg_bytes)).convert("RGB")
-        
-        background_color = tuple(req.background_color)
-        composite = place_object_on_background(object_rgba, background_rgb, background_color)
-        
-        composite_base64 = encode_image_to_base64(composite)
-        
-        return {
-            "success": True,
-            "composite_base64": composite_base64,
-            "size": composite.size,
-            "message": "Object placed on background"
-        }
-    
-    except Exception as e:
-        raise HTTPException(500, str(e))
-
 @router.post("/get_segment_at_point")
 def get_segment_at_point(req: GetSegmentAtPointRequest):
     """
-    Get the segment mask at a specific point in the image.
-    Used when user long-presses on the image to select an object.
+    Get the segment at a specific point in the image.
+    Used when the user long-presses on the image to select an object.
     """
     try:
-        if req.image_id not in IMAGE_STORE:
-            raise HTTPException(404, "Image ID not found")
-        
-        img_data = IMAGE_STORE[req.image_id]
-        
-        # Frontend sends coordinates in the processed image space
-        # No transformation needed - coordinates are already correct
+        img_data = get_stored_image(req.image_id)
         x, y = req.x, req.y
         h, w = img_data["shape"]
-        
-        print(f"[SEGMENT SELECT] Received coords: ({req.x}, {req.y}), Image size: {w}x{h}")
-        
-        # Validate coordinates are within bounds
-        if x < 0 or x >= w or y < 0 or y >= h:
-            print(f"[SEGMENT SELECT] Coordinates out of bounds, clamping")
-            x = max(0, min(x, w - 1))
-            y = max(0, min(y, h - 1))
-        
-        if "segments" not in img_data:
-            img = img_data["image"]
-            predictor.set_image(img)
-            
-            input_points = np.array([[x, y]])
-            input_labels = np.array([1])
-            
-            masks, scores, logits = predictor.predict(
-                point_coords=input_points,
-                point_labels=input_labels,
-                multimask_output=True
-            )
-            
-            best_idx = np.argmax(scores)
-            best_mask = masks[best_idx]
-            mask_b64 = encode_mask_to_base64(best_mask)
-            
-            return {
-                "success": True,
-                "mask_base64": mask_b64,
-                "score": float(scores[best_idx]),
-                "has_segment": True
-            }
-        
+        x = max(0, min(x, w - 1))
+        y = max(0, min(y, h - 1))
+
         segments = img_data["segments"]
-        h, w = img_data["shape"]
-        
-        if y < 0 or y >= h or x < 0 or x >= w:
-            raise HTTPException(400, f"Coordinates ({x}, {y}) out of bounds for image {w}x{h}")
-        
-        
         matching_segments = []
         for i, segment in enumerate(segments):
             bbox = segment['bbox']  # [x, y, width, height]
@@ -462,24 +255,22 @@ def get_segment_at_point(req: GetSegmentAtPointRequest):
         if matching_segments:
             matching_segments.sort(key=lambda x: x[1]['area'])
             best_index, best_segment = matching_segments[0]
-            
-            print(f"[SEGMENT SELECT] Found {len(matching_segments)} matching segments, selected smallest (area={best_segment['area']})")
-            
-            mask_b64 = encode_mask_to_base64(best_segment['segmentation'])
+
+            print(f"[SEGMENT SELECT] {len(matching_segments)} matches, picked smallest (area={best_segment['area']})")
+
             return {
                 "success": True,
-                "mask_base64": mask_b64,
-                "score": float(best_segment.get('stability_score', 1.0)),
+                "has_segment": True,
                 "segment_index": best_index,
-                "area": int(best_segment['area']),
-                "has_segment": True
-            }        
+            }
         return {
             "success": True,
             "has_segment": False,
             "message": "No segment at this point"
         }
-    
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
