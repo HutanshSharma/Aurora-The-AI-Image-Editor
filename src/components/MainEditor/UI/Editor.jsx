@@ -7,15 +7,16 @@ import CommandInput from './CommandInput.jsx';
 import AnimatedList from './AnimatedList/AnimatedList.jsx';
 import DropBox from './DropBox.jsx';
 import SegmentEditor from '../../SegmentEditor/UI/SegmentEditor.jsx';
-import EditSlider from '../../SegmentEditor/UI/EditSlider.jsx';
 import useHistory from '../../../hooks/useHistory.jsx';
 import { useUser } from '../../../store/UserContext.jsx';
-import EditingSidebar from './EditingSidebar.jsx';
+import { useLoader } from '../../../store/LoaderContext.jsx';
+import AdjustBar from './AdjustBar.jsx';
 import LUTSlider from './LUTSlider.jsx';
 import HistoryViewer from './HistoryViewer.jsx';
 import { loadLUT } from '../Utils/LUTUtils.js';
 import { uploadAndSegment, imageToBase64 } from '../Utils/SegmentationAPI.js';
 import watermarkImg from '../../../assets/watermark.png';
+import { ArrowLeft } from 'lucide-react';
 
 export class Command {
   constructor(doFn, undoFn) {
@@ -24,7 +25,21 @@ export class Command {
   }
 }
 
-const Editor = () => {
+const initialEditorState = {
+  brightness: 100,
+  contrast: 100,
+  saturation: 100,
+  blur: 0,
+  rotation: 0,
+  flipH: false,
+  flipV: false,
+  opacity: 100,
+  sharpen: 0,
+  hue: 0,
+  selectedLUT: null,
+};
+
+const Editor = ({ addToast }) => {
   const [uploadedImage, setUploadedImage] = useState(null);
   const [allImages, setallImages] = useState([]);
   const [showImages, setShowImages] = useState(false);
@@ -35,7 +50,9 @@ const Editor = () => {
   const [droppedObjects, setDroppedObjects] = useState([]);
   const [showEditor, setShowEditor] = useState(false);
   const [selectedEditOption, setSelectedEditOption] = useState(null);
-  const [showEditingSidebar, setShowEditingSidebar] = useState(false);
+  const [showAdjust, setShowAdjust] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [displayZoom, setDisplayZoom] = useState(1);
   const [loadedLUT, setLoadedLUT] = useState(null);
   const [showLUTSelector, setShowLUTSelector] = useState(false);
   const [isSegmenting, setIsSegmenting] = useState(false);
@@ -43,23 +60,13 @@ const Editor = () => {
   const [mergedSegments, setMergedSegments] = useState([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isApplyingLUT, setIsApplyingLUT] = useState(false);
 
   const {user, fetchImage, uploadImage, deleteImage} = useUser();
+  const { showLoader, hideLoader } = useLoader();
   const dropBoxRef = useRef(null);
-
-  const initialEditorState = {
-    brightness: 100,
-    contrast: 100,
-    saturation: 100,
-    blur: 0,
-    rotation: 0,
-    flipH: false,
-    flipV: false,
-    opacity: 100,
-    sharpen: 0,
-    hue: 0,
-    selectedLUT: null,
-  };
+  const pendingApplyRef = useRef(false);
+  const applyTimeoutRef = useRef(null);
 
   const {
     state: editorState,
@@ -71,9 +78,27 @@ const Editor = () => {
     historyTree,
     currentNodeId,
     jumpToNode,
-    addBranch,
-    initialState: historyInitialState
+    addBranch
   } = useHistory(initialEditorState);
+  const jumpToNodeWithLoader = (nodeId) => {
+    pendingApplyRef.current = true;
+    showLoader('Applying changes…');
+    jumpToNode(nodeId);
+    clearTimeout(applyTimeoutRef.current);
+    applyTimeoutRef.current = setTimeout(() => {
+      if (pendingApplyRef.current) {
+        pendingApplyRef.current = false;
+        hideLoader();
+      }
+    }, 4000);
+  };
+  const handleCanvasDrawn = () => {
+    if (pendingApplyRef.current) {
+      pendingApplyRef.current = false;
+      clearTimeout(applyTimeoutRef.current);
+      hideLoader();
+    }
+  };
 
   useEffect(() => {
     if (user && user.images && user.images.length > 0) {
@@ -84,15 +109,25 @@ const Editor = () => {
   }, [user]);
 
   useEffect(() => {
+    let cancelled = false;
     const loadSelectedLUT = async () => {
       if (editorState.selectedLUT) {
         const lut = await loadLUT(`/luts/${editorState.selectedLUT.file}`);
-        setLoadedLUT(lut);
+        if (!cancelled) {
+          setLoadedLUT(lut);
+          requestAnimationFrame(() => {
+            if (!cancelled) setIsApplyingLUT(false);
+          });
+        }
       } else {
         setLoadedLUT(null);
+        setIsApplyingLUT(false);
       }
     };
     loadSelectedLUT();
+    return () => {
+      cancelled = true;
+    };
   }, [editorState.selectedLUT]);
 
   useEffect(() => {
@@ -112,7 +147,7 @@ const Editor = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo]);
 
-  const handleImageDelete = async (stored_name, original_name) => {
+  const handleImageDelete = async (stored_name) => {
     try {
       await deleteImage(stored_name);
       setallImages(prev => prev.filter(img => img.stored_name !== stored_name));
@@ -157,27 +192,9 @@ const Editor = () => {
         return;
       }
       
-      img.onload = async () => {        
+      img.onload = () => {
         setUploadedImage(img);
-        setShowImages(false);        
-        setIsSegmenting(true);
-        try {
-          const imageBase64 = imageToBase64(img);
-          const result = await uploadAndSegment(imageBase64);
-          setSegmentationImageId(result.image_id);          
-          if (result.compressedImage && (result.compressedWidth !== img.width || result.compressedHeight !== img.height)) {
-            const compressedImg = new Image();
-            compressedImg.src = result.compressedImage;
-            compressedImg.onload = () => {
-              setUploadedImage(compressedImg);
-            };
-          }
-        } catch (error) {
-          alert('Segmentation failed. Make sure the backend server is running on http://localhost:8000');
-          setShowImages(false);
-        } finally {
-          setIsSegmenting(false);
-        }
+        setShowImages(false);
       };
       
       img.onerror = () => {
@@ -188,9 +205,15 @@ const Editor = () => {
     }
   };
 
+  const uploadInputRef = useRef(null);
   const openPopup = () => {
+    setShowAdjust(false);
+    // On phones the drag-and-drop sheet feels unnatural — open the native picker directly.
+    if (typeof window !== 'undefined' && !window.matchMedia('(min-width: 768px)').matches) {
+      uploadInputRef.current?.click();
+      return;
+    }
     setPopupState('open-popup');
-    setShowEditingSidebar(false);
   };
   const closePopup = () => {
     setPopupState('close-popup');
@@ -199,7 +222,7 @@ const Editor = () => {
 
   const handleLoadImages = () => {
     setShowImages(prev => !prev);
-    setShowEditingSidebar(false);
+    setShowAdjust(false);
   };
 
   const downloadImage = async () => {
@@ -274,6 +297,7 @@ const Editor = () => {
   };
 
   const handleLUTSelect = (lut) => {
+    setIsApplyingLUT(!!lut);
     execute(new Command(
       (s) => ({ ...s, selectedLUT: lut }),
       (s) => ({ ...s, selectedLUT: editorState.selectedLUT })
@@ -308,22 +332,37 @@ const Editor = () => {
     return new Promise((resolve) => {
       mergedImage.onload = () => {
         setUploadedImage(mergedImage);
-        setMergedSegments([]);        
-        resegmentImage(mergedImage);
+        setMergedSegments([]);
+        setSegmentationImageId(null);
         resolve();
       };
       mergedImage.src = canvas.toDataURL('image/png', 1.0);
     });
   };
 
-  const resegmentImage = async (img) => {
+  const handleSegment = async () => {
+    if (!uploadedImage || isSegmenting) return;
+    if (segmentationImageId) {
+      addToast?.('This image is already segmented — long-press to select an object.', 'info');
+      return;
+    }
     setIsSegmenting(true);
     try {
-      const imageBase64 = imageToBase64(img);
-      const result = await uploadAndSegment(imageBase64);
+      const imageBase64 = imageToBase64(uploadedImage);
+      const result = await Promise.race([
+        uploadAndSegment(imageBase64),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Segmentation timed out')), 45000)),
+      ]);
       setSegmentationImageId(result.image_id);
+      if (result.compressedImage && (result.compressedWidth !== uploadedImage.width || result.compressedHeight !== uploadedImage.height)) {
+        const compressedImg = new Image();
+        compressedImg.src = result.compressedImage;
+        compressedImg.onload = () => setUploadedImage(compressedImg);
+      }
+      addToast?.('Objects detected — long-press the image to select one.', 'success');
     } catch (error) {
-      console.error('✗ Re-segmentation failed:', error);
+      console.error('Segmentation failed:', error);
+      addToast?.('Segmentation failed — is the backend server running?', 'error');
     } finally {
       setIsSegmenting(false);
     }
@@ -381,7 +420,7 @@ const Editor = () => {
       };
       setDroppedObjects(prev=>[...prev, objectWithPosition]);
       setShowEditor(true);
-      setShowEditingSidebar(false);      
+      setShowAdjust(false);      
       if (obj.isSegmentedObject) {
         setObjects(prev => prev.filter(o => o.id !== obj.id));
       }
@@ -405,8 +444,29 @@ const Editor = () => {
         canUndo={canUndo}
         canRedo={canRedo}
         uploadedImage={uploadedImage}
-        setShowEditingSidebar={setShowEditingSidebar}
-        showEditingSidebar={showEditingSidebar}
+        zoom={displayZoom}
+        hasUnsavedChanges={hasUnsavedChanges}
+        onAdjust={() => {
+          setShowAdjust(true);
+          setShowLUTSelector(false);
+          setShowHistory(false);
+        }}
+        onFilters={() => {
+          setShowLUTSelector(true);
+          setShowAdjust(false);
+          setSelectedEditOption(null);
+          setShowHistory(false);
+        }}
+        onHistory={() => {
+          setShowHistory(true);
+          setShowAdjust(false);
+          setShowLUTSelector(false);
+        }}
+        onSave={saveImage}
+        onDownload={downloadImage}
+        onReset={resetFilters}
+        onSegment={handleSegment}
+        isSegmented={!!segmentationImageId}
       />
 
       <div>
@@ -415,34 +475,37 @@ const Editor = () => {
           handleImageUpload={handleImageUpload}
           closePopup={closePopup}
           popupState={popupState}
-          setIsSegmenting={setIsSegmenting}
-          setSegmentationImageId={setSegmentationImageId}
+          inputRef={uploadInputRef}
         />
 
         {showImages && !showEditor ? (
-          <div className="absolute top-35 md:top-20 w-full bg-black">
-            <div className="flex justify-center">
-              <AnimatedList
-                items={allImages}
-                onItemSelect={handleImageClick}
-                onItemDelete={handleImageDelete}
-                showGradients={true}
-                enableArrowNavigation={true}
-                displayScrollbar={true}
-                loaded={!!user}
-              />
+          <div className="absolute inset-x-0 top-20 bottom-0 z-20 bg-background">
+            <div className="mx-auto w-full max-w-xl px-4 pt-4">
+              <div className="mb-2 flex items-center gap-3">
+                <button
+                  onClick={() => setShowImages(false)}
+                  aria-label="Back"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface-2 text-ink transition-colors hover:bg-surface-3 active:scale-95"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <h2 className="text-lg font-semibold text-ink">Your library</h2>
+              </div>
+              <div className="flex justify-center">
+                <AnimatedList
+                  items={allImages}
+                  onItemSelect={handleImageClick}
+                  onItemDelete={handleImageDelete}
+                  showGradients={true}
+                  enableArrowNavigation={true}
+                  displayScrollbar={true}
+                  loaded={!!user}
+                />
+              </div>
             </div>
           </div>
         ) : (
           <div className="relative">
-            {showEditingSidebar && uploadedImage && (
-              <div 
-                className="fixed inset-0 bg-black/50 z-30 md:hidden"
-                style={{ top: '80px' }}
-                onClick={() => setShowEditingSidebar(false)}
-              />
-            )}
-            
             <Canvas
               setShowDropBox={setShowDropBox}
               uploadedImage={uploadedImage}
@@ -456,64 +519,69 @@ const Editor = () => {
               isSegmenting={isSegmenting}
               segmentationImageId={segmentationImageId}
               mergedSegments={mergedSegments}
+              onZoomChange={setDisplayZoom}
+              onDrawn={handleCanvasDrawn}
+              addToast={addToast}
+              onSegment={handleSegment}
             />
-            
-            <div className={`md:hidden fixed inset-y-0 right-0 w-80 bg-[rgba(0,0,0,0.1)] border-l border-white/10 overflow-y-auto transform transition-transform duration-300 ease-in-out z-40 ${
-                (showEditingSidebar && uploadedImage) ? 'translate-x-0' : 'translate-x-full'
-              }`}>
-                <EditingSidebar 
-                setSelectedEditOption={setSelectedEditOption}
-                selectedEditOption={selectedEditOption}
+
+            {showAdjust && uploadedImage && (
+              <AdjustBar
                 editorState={editorState}
-                setShowEditingSidebar={setShowEditingSidebar}
-                downloadImage={downloadImage}
-                resetFilters={resetFilters}
+                selectedEditOption={selectedEditOption}
+                setSelectedEditOption={setSelectedEditOption}
                 execute={execute}
                 Command={Command}
-                setShowLUTSelector={setShowLUTSelector}
-                />
-            </div>
-
-            {uploadedImage && selectedEditOption && (
-              <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50">
-                <EditSlider
-                  selectedEditOption={selectedEditOption}
-                  editorState={editorState}
-                  execute={execute}
-                  setSelectedEditOption={setSelectedEditOption}
-                />
-              </div>
+                resetFilters={resetFilters}
+                onClose={() => {
+                  setShowAdjust(false);
+                  setSelectedEditOption(null);
+                }}
+              />
             )}
           </div>
         )}
 
-        {uploadedImage && !showImages && !showEditor && (
-          <CommandInput 
-            selectedObject={selectedObject} 
-            className={'absolute bottom-0'}
-            execute={execute}
-            editorState={editorState}
-            Command={Command}
-          />
+        {uploadedImage && !showImages && !showEditor && !showAdjust && !showLUTSelector && (
+          <div className="fixed inset-x-0 bottom-0 z-20 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+            <CommandInput
+              selectedObject={selectedObject}
+              execute={execute}
+              editorState={editorState}
+              Command={Command}
+              addToast={addToast}
+            />
+          </div>
         )}
 
         {showDropBox && (
           <DropBox ref={dropBoxRef}/>
         )}
 
-        {showEditor && 
+        {showEditor &&
         <SegmentEditor
           setShowEditor={setShowEditor}
           droppedObjects={droppedObjects}
           onSave={handleApplyEditedSegments}
+          addToast={addToast}
 />
           }
         
+        {isApplyingLUT && uploadedImage && (
+          <div className="pointer-events-none fixed inset-0 z-30 flex items-center justify-center">
+            <div className="flex items-center gap-3 rounded-2xl border border-line bg-black/75 px-5 py-3 backdrop-blur-sm">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/25 border-t-accent" />
+              <span className="text-sm font-medium text-ink">Applying filter…</span>
+            </div>
+          </div>
+        )}
+
         {showLUTSelector && uploadedImage && (
           <LUTSlider
             onSelect={handleLUTSelect}
             currentLUT={editorState.selectedLUT}
             onClose={() => setShowLUTSelector(false)}
+            uploadedImage={uploadedImage}
           />
         )}
 
@@ -524,12 +592,13 @@ const Editor = () => {
             historyTree={historyTree}
             currentNodeId={currentNodeId}
             loadedLUT={loadedLUT}
-            onJumpToNode={jumpToNode}
-            saveImage={saveImage}
-            hasUnsavedChanges={hasUnsavedChanges}
+            onJumpToNode={jumpToNodeWithLoader}
             isSaving={isSaving}
             addBranch={addBranch}
             editorState={editorState}
+            isOpen={showHistory}
+            onClose={() => setShowHistory(false)}
+            addToast={addToast}
           />
         )}
       </div>

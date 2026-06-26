@@ -1,8 +1,9 @@
-import { Sun, Contrast, Droplet, Sparkles, RotateCw, ImageIcon, Palette, X, Minus, Plus } from "lucide-react";
+import { Sun, Contrast, Droplet, Sparkles, RotateCw, RotateCcw, ImageIcon, Palette, Check, Minus, Plus } from "lucide-react";
 import { useRef, useState } from "react";
+// eslint-disable-next-line no-unused-vars
 import { animate, motion, useMotionValue, useMotionValueEvent, useTransform } from 'motion/react';
 
-const MAX_OVERFLOW = 50;
+const MAX_OVERFLOW = 24;
 
 class Command {
   constructor(doFn, undoFn) {
@@ -11,8 +12,8 @@ class Command {
   }
 }
 
-export default function EditSlider({selectedEditOption, editorState, execute, setSelectedEditOption}){
-    const [isDragging, setIsDragging] = useState(false);
+export default function EditSlider({selectedEditOption, editorState, execute, setSelectedEditOption, embedded = false, onClose}){
+    const [, setIsDragging] = useState(false);
     const startValueRef = useRef(null);
     const sliderRef = useRef(null);
     const [region, setRegion] = useState('middle');
@@ -123,8 +124,21 @@ export default function EditSlider({selectedEditOption, editorState, execute, se
     const handleChange = (value) => {
         execute(new Command(
             (s) => ({ ...s, [selectedEditOption]: value }),
-            (s) => s 
+            (s) => s
         ), true);
+    };
+
+    const getDefault = () =>
+        ['brightness', 'contrast', 'saturation', 'opacity'].includes(selectedEditOption) ? 100 : 0;
+
+    const handleReset = () => {
+        const def = getDefault();
+        const cur = getValue();
+        if (cur === def) return;
+        execute(new Command(
+            (s) => ({ ...s, [selectedEditOption]: def }),
+            (s) => ({ ...s, [selectedEditOption]: cur })
+        ), false, cur, def);
     };
 
     const handlePointerMove = (e) => {
@@ -157,24 +171,17 @@ export default function EditSlider({selectedEditOption, editorState, execute, se
     };
 
     return (
-        <div className="absolute bottom-7 left-1/2 transform -translate-x-1/2 bg-black/80 backdrop-blur-md border border-white/20 rounded-xl px-6 py-4 z-20 w-80 md:w-96">
+        <div className={embedded
+            ? "relative w-full px-1 pb-1"
+            : "absolute bottom-7 left-1/2 -translate-x-1/2 glass border border-line rounded-2xl px-5 py-4 z-20 w-[min(22rem,calc(100vw-1.5rem))] shadow-pop"}>
             <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2" style={{ color: getColor() }}>
                     {getIcon()}
-                    <span className="font-semibold capitalize text-white">{selectedEditOption}</span>
+                    <span className="font-semibold capitalize text-ink">{selectedEditOption}</span>
                 </div>
-                <div className="flex items-center gap-3">
-                    <span className="text-sm font-mono text-white">
-                        {getValue()}{getUnit()}
-                    </span>
-                    <button
-                        onClick={() => setSelectedEditOption(null)}
-                        className="text-gray-400 hover:text-white transition-colors"
-                        title="Close"
-                    >
-                        <X size={16} />
-                    </button>
-                </div>
+                <span className="text-sm font-mono tabular-nums text-ink">
+                    {getValue()}{getUnit()}
+                </span>
             </div>
 
             <motion.div
@@ -183,7 +190,6 @@ export default function EditSlider({selectedEditOption, editorState, execute, se
                 onTouchStart={() => animate(scale, 1.2)}
                 onTouchEnd={() => animate(scale, 1)}
                 style={{
-                    scale,
                     opacity: useTransform(scale, [1, 1.2], [0.7, 1])
                 }}
                 className="flex w-full touch-none select-none items-center justify-center gap-4"
@@ -254,6 +260,21 @@ export default function EditSlider({selectedEditOption, editorState, execute, se
                     <Plus size={16} />
                 </motion.div>
             </motion.div>
+
+            <div className="mt-5 flex items-center justify-between">
+                <button
+                    onClick={handleReset}
+                    className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-amber-500 px-3.5 text-[13px] font-semibold text-neutral-900 transition-colors hover:bg-amber-400 active:scale-95"
+                >
+                    <RotateCcw size={15} /> Reset
+                </button>
+                <button
+                    onClick={() => (onClose ? onClose() : setSelectedEditOption(null))}
+                    className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-accent px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-accent-hover active:scale-95"
+                >
+                    <Check size={16} /> Apply
+                </button>
+            </div>
         </div>
     );
 }

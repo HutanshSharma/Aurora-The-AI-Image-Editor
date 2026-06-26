@@ -42,7 +42,7 @@ export function applyLUT(imageData, lut) {
     return imageData;
   }
     
-  const { data, width, height } = imageData;
+  const { data } = imageData;
   const lutSize = lut.size;
   const lutData = lut.data;
   

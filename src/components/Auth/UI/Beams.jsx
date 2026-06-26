@@ -164,16 +164,6 @@ const Beams = ({
     }
   }, []);
   
-  if (hasWebGLError) {
-    return (
-      <div className="w-full h-full bg-linear-to-br from-purple-900 to-blue-900 flex items-center justify-center">
-        <div className="text-white text-center">
-          <div className="mb-4">✨</div>
-          <p className="text-sm opacity-75">Rendering fallback background</p>
-        </div>
-      </div>
-    );
-  }
   const meshRef = useRef(null);
   const beamMaterial = useMemo(
     () =>
@@ -231,6 +221,17 @@ const Beams = ({
       }),
     [speed, noiseIntensity, scale]
   );
+
+  if (hasWebGLError) {
+    return (
+      <div className="w-full h-full bg-linear-to-br from-purple-900 to-blue-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="mb-4">✨</div>
+          <p className="text-sm opacity-75">Rendering fallback background</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <CanvasWrapper>
@@ -324,7 +325,6 @@ const DirLight = ({ position, color }) => {
     cam.right = 24;
     cam.far = 64;
     dir.current.shadow.bias = -0.004;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return <directionalLight ref={dir} color={color} intensity={1} position={position} />;
 };

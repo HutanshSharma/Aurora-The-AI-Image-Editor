@@ -1,71 +1,44 @@
-import {LaptopMinimalCheck, Ban, TicketX, X} from 'lucide-react'
+import { CheckCircle2, XCircle, AlertTriangle, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-export default function Toast({id, message, type, removeToast}){
-    const [isVisible, setIsVisible] = useState(true);
-    
-    const getIcon = (type) => {
-        switch(type) {
-        case 'success':
-            return <LaptopMinimalCheck className="text-green-600 text-lg sm:text-xl shrink-0" />;
-        case 'error':
-            return <Ban className="text-red-400 text-lg sm:text-xl shrink-0" />;
-        case 'invalid':
-            return <TicketX className="text-orange-400 text-lg sm:text-xl shrink-0" />;
-        default:
-            return null;
-        }
-    };
-    
-    const getProgressBarColor = (type) => {
-        switch(type) {
-            case 'success':
-                return ['bg-green-600','bg-green-50 border-green-200 border-r-green-600'];
-            case 'error':
-                return ['bg-red-400','bg-red-50 border-red-200 border-r-red-600'];
-            case 'invalid':
-                return ['bg-orange-400','bg-orange-50 border-orange-200 border-r-orange-600'];
-            default:
-                return ['bg-green-600','bg-green-50 border-green-200 border-r-green-600'];
-        }
-    };
+const TYPES = {
+  success: { Icon: CheckCircle2, color: 'text-success', bar: 'bg-success' },
+  error: { Icon: XCircle, color: 'text-danger', bar: 'bg-danger' },
+  invalid: { Icon: AlertTriangle, color: 'text-warning', bar: 'bg-warning' },
+  info: { Icon: AlertTriangle, color: 'text-accent', bar: 'bg-accent' },
+};
 
-    const handleClose = () => {
-        setIsVisible(false);
-        setTimeout(() => removeToast(id), 300);
-    };
+export default function Toast({ id, message, type, removeToast }) {
+  const [isVisible, setIsVisible] = useState(true);
+  const { Icon, color, bar } = TYPES[type] || TYPES.info;
 
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            handleClose();
-        }, 5000);
-        
-        return () => clearTimeout(timer);
-    }, [id]); 
+  const handleClose = () => {
+    setIsVisible(false);
+    setTimeout(() => removeToast(id), 300);
+  };
 
-    const color = getProgressBarColor(type);
+  useEffect(() => {
+    const timer = setTimeout(handleClose, 5000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
-    return (
-        <div className={`
-            w-64 sm:w-72 md:w-80 min-h-14 
-            ${color[1]}
-            font-medium shadow-lg rounded-md 
-            flex items-center gap-2 p-2 sm:p-3 relative 
-            transition-all duration-300 ease-in-out
-            ${isVisible ? 'animate-slideIn opacity-100' : 'opacity-0 translate-x-full'}
-        `}>
-            {getIcon(type)}
-            <span className="flex-1 text-sm sm:text-base text-gray-800 pr-2 leading-tight">{message}</span>
-            
-            <button 
-                onClick={handleClose}
-                className="shrink-0 p-1 rounded-full hover:bg-black/10 transition-colors"
-                aria-label="Close notification"
-            >
-                <X className="w-4 h-4 text-gray-600" />
-            </button>
-            
-            <div className={`absolute rounded-b-md left-0 bottom-0 h-1 w-full ${color[0]} animate-shrink`}></div>
-        </div>
-    )
-} 
+  return (
+    <div
+      className={`relative flex w-64 min-h-14 items-center gap-2.5 overflow-hidden rounded-2xl border border-line bg-surface-2 p-3 shadow-pop transition-all duration-300 ease-in-out sm:w-80 ${
+        isVisible ? 'animate-slideIn opacity-100' : 'translate-x-full opacity-0'
+      }`}
+    >
+      <Icon size={20} className={`shrink-0 ${color}`} />
+      <span className="flex-1 pr-2 text-sm font-medium leading-tight text-ink">{message}</span>
+      <button
+        onClick={handleClose}
+        className="shrink-0 rounded-full p-1 text-muted transition-colors hover:bg-white/10 hover:text-ink"
+        aria-label="Close notification"
+      >
+        <X className="h-4 w-4" />
+      </button>
+      <div className={`absolute bottom-0 left-0 h-1 w-full rounded-b-2xl ${bar} animate-shrink`} />
+    </div>
+  );
+}

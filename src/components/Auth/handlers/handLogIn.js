@@ -1,10 +1,12 @@
+import { API_BASE } from '../../../utils/config';
+
 export default function handleLogIn(loginData, addToast, setIsLoading){
     if(loginData.email === '' || loginData.password === ''){
       addToast('Required Fields are empty','error')
       return 
     }
     if(!isValidEmail(loginData.email)){
-      addToast("Email I'd is not valid", 'error')
+      addToast("Email ID is not valid", 'error')
       return 
     }
 
@@ -12,7 +14,7 @@ export default function handleLogIn(loginData, addToast, setIsLoading){
 
     (async function(){
       try{
-        const token = await fetch("http://localhost:8000/auth/token",{
+        const token = await fetch(`${API_BASE}/auth/token`,{
           method:"POST",
           body:JSON.stringify({"email":loginData.email,
                               "password" :loginData.password
@@ -37,7 +39,7 @@ export default function handleLogIn(loginData, addToast, setIsLoading){
       }
 
       try{
-        const refresh_token = await fetch("http://localhost:8000/auth/refresh_token",{
+        const refresh_token = await fetch(`${API_BASE}/auth/refresh_token`,{
           method:"POST",
           body:JSON.stringify({"email":loginData.email,
                               "password" :loginData.password
@@ -50,13 +52,17 @@ export default function handleLogIn(loginData, addToast, setIsLoading){
         const refreshData = await refresh_token.json()
         if(!refresh_token.ok){
           addToast(refreshData.detail,'error')
+          setIsLoading(false);
           return
         }
-        addToast("Logged in successfully","success")
         localStorage.setItem('refresh_token',refreshData['refresh_token'])
+        addToast("Logged in successfully","success")
+        setIsLoading(false);
+        window.location.href = '/'
       }
       catch(error){
         addToast('Something went wrong. Please try again later.','invalid')
+        setIsLoading(false);
         return
       }
     })()

@@ -1,3 +1,5 @@
+import { API_BASE } from '../../../utils/config';
+
 export default async function handleChangePassword(forgotpasswordData, addToast){
     if(forgotpasswordData.email === ''){
         addToast('Please enter you email address','error')
@@ -9,7 +11,7 @@ export default async function handleChangePassword(forgotpasswordData, addToast)
     }
     const returendValue = await (async function(){
       try{
-        const reponse = await fetch("http://localhost:8000/auth/forgot_password",{
+        const reponse = await fetch(`${API_BASE}/auth/forgot_password`,{
           method:"POST",
           body:JSON.stringify({"email":forgotpasswordData.email,
           }),

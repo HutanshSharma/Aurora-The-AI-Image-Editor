@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
+import { API_BASE } from "../utils/config";
 
 const UserContext = createContext();
 
@@ -6,6 +7,7 @@ export function UserProvider({ children, addToast }) {
     const [user, setUser] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [imageCache, setImageCache] = useState(new Map());
+    const refreshPromiseRef = useRef(null);
     
     const fetchImage = async (stored_name) => {
         if (imageCache.has(stored_name)) {
@@ -18,7 +20,7 @@ export function UserProvider({ children, addToast }) {
                 throw new Error("No access token available");
             }
             
-            const response = await fetch(`http://localhost:8000/user/image/${stored_name}`, {
+            const response = await fetch(`${API_BASE}/user/image/${stored_name}`, {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
@@ -55,7 +57,7 @@ export function UserProvider({ children, addToast }) {
                 throw new Error("No access token available");
             }
             
-            const response = await fetch("http://localhost:8000/user/upload-image", {
+            const response = await fetch(`${API_BASE}/user/upload-image`, {
                 method: "POST",
                 headers: {
                     "Authorization": `Bearer ${accessToken}`
@@ -105,7 +107,7 @@ export function UserProvider({ children, addToast }) {
                 throw new Error("No access token available");
             }
             
-            const response = await fetch(`http://localhost:8000/user/delete-image/${stored_name}`, {
+            const response = await fetch(`${API_BASE}/user/delete-image/${stored_name}`, {
                 method: "DELETE",
                 headers: {
                     "Content-Type": "application/json",
@@ -173,7 +175,7 @@ export function UserProvider({ children, addToast }) {
             }
         }
 
-        const response = await fetch("http://localhost:8000/user/", {
+        const response = await fetch(`${API_BASE}/user/`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -182,7 +184,6 @@ export function UserProvider({ children, addToast }) {
         });
         
         if (response.status === 401) {
-          const resData = await response.json();
           const refreshed = await refreshAccessToken();
           if (refreshed) {
             return fetchUser();
@@ -217,32 +218,41 @@ export function UserProvider({ children, addToast }) {
     fetchUser();
     }, []);
 
-    async function refreshAccessToken() {
-    try {
-        const refreshToken = localStorage.getItem("refresh_token");        
-        const res = await fetch("http://localhost:8000/auth/generate_new_access_token", {
-            method: "POST",
-            body: JSON.stringify({
-            'refresh_token': refreshToken,
-            }),
-            headers: {
-            "Content-Type": "application/json",
-            },
-        });
-        const data = await res.json();
-        
-        if (!res.ok) {
-            console.log("Refresh failed:", data);
-            addToast(data.detail, 'error');
+    function refreshAccessToken() {
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
+
+    refreshPromiseRef.current = (async () => {
+        try {
+            const refreshToken = localStorage.getItem("refresh_token");
+            const res = await fetch(`${API_BASE}/auth/generate_new_access_token`, {
+                method: "POST",
+                body: JSON.stringify({
+                'refresh_token': refreshToken,
+                }),
+                headers: {
+                "Content-Type": "application/json",
+                },
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                console.log("Refresh failed:", data);
+                addToast(data.detail, 'error');
+                return false;
+            }
+            sessionStorage.setItem("access_token", data.access_token);
+            return true;
+        }
+        catch (error) {
+            addToast("Validation Failed", 'error');
             return false;
         }
-        sessionStorage.setItem("access_token", data.access_token);
-        return true;
-    } 
-    catch (error) {
-        addToast("Validation Failed", 'error');
-        return false;
-    }
+        finally {
+            refreshPromiseRef.current = null;
+        }
+    })();
+
+    return refreshPromiseRef.current;
     }
 
     return (
@@ -252,6 +262,9 @@ export function UserProvider({ children, addToast }) {
     );
 }
 
+// Colocating the hook with its provider is intentional; this only affects React Fast
+// Refresh during dev, not runtime behavior.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useUser() {
   return useContext(UserContext);
 }

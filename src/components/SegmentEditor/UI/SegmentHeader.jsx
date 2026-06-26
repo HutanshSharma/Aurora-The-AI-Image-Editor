@@ -1,53 +1,57 @@
-import { X, Grid3x3, Undo, Redo } from "lucide-react"
+import { X, Undo2, Redo2, Check } from 'lucide-react';
+import IconButton from '../../ui/IconButton';
+import Button from '../../ui/Button';
+import Segmented from '../../ui/Segmented';
 
-export default function SegmentHeader({setShowEditor, editedObjects, setViewMode, viewMode, handleUndo, handleRedo, canUndo, canRedo}){
-    return (
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
-          <div className="flex items-center gap-4 text-sm md:text-md">
-            <div className="flex gap-2">
-              <button
-                onClick={() => setViewMode('edit')}
-                className={`px-2 py-2 md:px-4 md:py-2 rounded-lg transition-all ${
-                  viewMode === 'edit' ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
-                }`}
-              >
-                Edit
-              </button>
-              <button
-                onClick={() => setViewMode('gallery')}
-                className={`px-2 py-2 md:px-4 md:py-2 rounded-lg transition-all flex items-center gap-2 ${
-                  viewMode === 'gallery' ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
-                }`}
-              >
-                <Grid3x3 size={16} />
-                Gallery ({editedObjects.length})
-              </button>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleUndo}
-              disabled={!canUndo}
-              className="p-2 bg-white/10 hover:bg-white/20 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              title="Undo (Ctrl+Z)"
-            >
-              <Undo size={20} />
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={!canRedo}
-              className="p-2 bg-white/10 hover:bg-white/20 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              title="Redo (Ctrl+Y)"
-            >
-              <Redo size={20} />
-            </button>
-            <button
-              onClick={() => setShowEditor(false)}
-              className="p-2 hover:bg-white/10 rounded-full transition-all bg-[rgba(255,2,2,0.9)]"
-            >
-              <X size={24} />
-            </button>
-          </div>
+export default function SegmentHeader({
+  setShowEditor,
+  setViewMode,
+  viewMode,
+  handleUndo,
+  handleRedo,
+  canUndo,
+  canRedo,
+  onDone,
+  isSaving,
+}) {
+  return (
+    <header className="flex shrink-0 items-center justify-between gap-2 border-b border-line bg-surface px-3 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)]">
+      <div className="flex min-w-0 items-center gap-2">
+        <IconButton size="sm" variant="surface" label="Close editor" onClick={() => setShowEditor(false)}>
+          <X size={18} />
+        </IconButton>
+        <Segmented
+          value={viewMode}
+          onChange={setViewMode}
+          options={[
+            { value: 'edit', label: 'Edit' },
+            { value: 'gallery', label: "Gallery" },
+          ]}
+        />
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <div className="flex h-9 items-center gap-0.5 rounded-2xl border border-line bg-surface-2/60 p-1">
+          <IconButton size="sm" variant="ghost" label="Undo (Ctrl+Z)" onClick={handleUndo} disabled={!canUndo}>
+            <Undo2 size={16} />
+          </IconButton>
+          <IconButton size="sm" variant="ghost" label="Redo (Ctrl+Y)" onClick={handleRedo} disabled={!canRedo}>
+            <Redo2 size={16} />
+          </IconButton>
         </div>
-    )
+        <Button size="sm" onClick={onDone} disabled={isSaving}>
+          {isSaving ? (
+            <>
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              Saving…
+            </>
+          ) : (
+            <>
+              <Check size={16} /> Done
+            </>
+          )}
+        </Button>
+      </div>
+    </header>
+  );
 }

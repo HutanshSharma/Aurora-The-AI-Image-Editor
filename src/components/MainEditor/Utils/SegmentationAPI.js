@@ -1,8 +1,12 @@
-const API_BASE_URL = 'http://localhost:8000/editing';
+import { authFetch } from '../../../utils/authFetch';
+import { API_BASE } from '../../../utils/config';
+
+const API_BASE_URL = `${API_BASE}/editing`;
 
 async function compressImage(imageBase64, maxDimension = 1500) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
+    img.onerror = () => reject(new Error('Failed to load image for compression'));
     img.onload = () => {
       const canvas = document.createElement('canvas');
       let width = img.width;
@@ -39,7 +43,7 @@ export async function uploadAndSegment(imageBase64) {
     const formData = new FormData();
     formData.append('file', blob, 'image.png');
     
-    const uploadResponse = await fetch(`${API_BASE_URL}/upload_and_segment`, {
+    const uploadResponse = await authFetch(`${API_BASE_URL}/upload_and_segment`, {
       method: 'POST',
       body: formData
     });
@@ -65,7 +69,7 @@ export async function uploadAndSegment(imageBase64) {
 
 export async function getSegmentAtPoint(imageId, x, y) {
   try {
-    const response = await fetch(`${API_BASE_URL}/get_segment_at_point`, {
+    const response = await authFetch(`${API_BASE_URL}/get_segment_at_point`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -88,33 +92,9 @@ export async function getSegmentAtPoint(imageId, x, y) {
   }
 }
 
-export async function extractObject(imageId, maskBase64) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/extract_object`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image_id: imageId,
-        mask_base64: maskBase64
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error extracting object:', error);
-    throw error;
-  }
-}
-
 export async function extractSegment(imageId, segmentIndex) {
   try {
-    const response = await fetch(`${API_BASE_URL}/extract_segment`, {
+    const response = await authFetch(`${API_BASE_URL}/extract_segment`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -134,15 +114,6 @@ export async function extractSegment(imageId, segmentIndex) {
     console.error('Error extracting segment:', error);
     throw error;
   }
-}
-
-export function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = error => reject(error);
-  });
 }
 
 export function imageToBase64(img) {

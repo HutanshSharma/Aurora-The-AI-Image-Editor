@@ -36,6 +36,8 @@ An advanced image editing application with 2 AI powered features, non linear his
 
 ## AI Feature 1 : Segmentation & Inpainting Pipeline
 
+> **Status note:** Local segmentation (MobileSAM) is fully working. The **cloud-based Qwen image editing** (white-to-scene, fusion, relight) is **currently disabled** — the HuggingFace Space it relied on is no longer active, so those endpoints return a "feature disabled" response. The manual editing, segmentation, color grading, and history features all work without it.
+
 ### How It Works
 
 The pipeline combines local segmentation with cloud based image editing to handle complex image manipulation tasks.
@@ -92,10 +94,6 @@ Below are the three Qwen-based image editing models along with their Hugging Fac
 ![Relight](https://cdn-uploads.huggingface.co/production/uploads/64461e86ab86b035add67e41/JC3gLrq8rPr-5CIerXF6t.gif)
 
 ---
-
-If you want, I can expand this into a full README with usage instructions, installation steps, examples, badges, or comparison tables.
-
-
 
 The split between local segmentation and remote generation keeps things fast while still leveraging powerful GPU infrastructure where it matters.
 
@@ -160,7 +158,7 @@ END
 - FastAPI (Python)
 - Qwen AI Models (inpainting, lighting)
 - MobileSAM (segmentation)
-- MongoDB (user data and images)
+- SQLite via SQLAlchemy (user accounts and image metadata)
 - PIL for image manipulation
 
 ## Repository Structure
@@ -216,7 +214,7 @@ Each node stores complete state, enabling instant jumps to any historical config
 ### Backend
 ```bash
 python -m venv env
-env\Script\activate.bat
+env\Scripts\activate.bat
 pip install -r requirements.txt
 uvicorn backend.main:app
 ```
@@ -228,7 +226,7 @@ npm run dev
 ```
 
 ### Setting up env
-The env has USERMAIL, PASSWORD, URI (for mongodb database), DB_NAME (any name), SECRET_KEY (for the fastapi backend), HF_TOKEN (for the qwen model)
+The env has USERMAIL and PASSWORD (for the reset/verify emails), SECRET_KEY (for the fastapi backend JWTs), and optionally HF_TOKEN (for the qwen model). The database is a local SQLite file (`aurora.db`) created automatically on first run — no database server or connection string needed. Set DATABASE_URL only if you want a different async SQLAlchemy database.
 
 ## License
 

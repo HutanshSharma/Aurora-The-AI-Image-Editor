@@ -33,6 +33,10 @@ cat.jpg
 venv/
 .pytest_cache/
 
+# SQLite database
+*.db
+aurora.db
+
 # Images
 *.jpg
 *.jpeg

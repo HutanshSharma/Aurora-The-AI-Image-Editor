@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, File, UploadFile
+from fastapi import APIRouter, HTTPException, File, UploadFile, Depends
 from pydantic import BaseModel
 import uuid
 import torch
 import base64
 import io
 from PIL import Image
+from .auth import get_current_user
 from ..segmentation_inpainting.utils import (
     decode_base64_image, 
     encode_mask_to_base64,
@@ -20,7 +21,8 @@ import io
 
 router = APIRouter(
     tags=["/editing"],
-    prefix="/editing"
+    prefix="/editing",
+    dependencies=[Depends(get_current_user)]
 )
 IMAGE_STORE = {}
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

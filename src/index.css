@@ -1,5 +1,156 @@
 @import "tailwindcss";
 
+@theme {
+  /* Surfaces (dark, layered for depth without heavy borders) */
+  --color-background: #0b0b0c;    /* app background        */
+  --color-surface: #161617;       /* cards / panels        */
+  --color-surface-2: #1f1f21;     /* raised controls       */
+  --color-surface-3: #2a2a2d;     /* hover / active surface */
+
+  /* Text */
+  --color-ink: #fafafa;           /* primary text          */
+  --color-muted: #9a9a9e;         /* secondary text        */
+  --color-faint: #6b6b70;         /* tertiary / disabled   */
+
+  /* Hairlines */
+  --color-line: rgba(255, 255, 255, 0.08);
+  --color-line-strong: rgba(255, 255, 255, 0.14);
+
+  /* Accent — crimson (the Aurora identity, disciplined) */
+  --color-accent: #f43f5e;
+  --color-accent-hover: #fb5c73;
+  --color-accent-press: #e11d48;
+  --color-accent-soft: rgba(244, 63, 94, 0.14);
+
+  /* Status */
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #ef4444;
+  --color-info: #60a5fa;
+
+  /* Typography */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+
+  /* Radii — rounded, not overly so */
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
+
+  /* Soft depth */
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.25), 0 4px 16px rgba(0, 0, 0, 0.28);
+  --shadow-pop: 0 12px 40px -8px rgba(0, 0, 0, 0.6),
+    0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 8px 32px -8px rgba(244, 63, 94, 0.45);
+
+  /* Motion */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--color-background);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    letter-spacing: -0.011em;
+    overscroll-behavior-y: none;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: none;
+  }
+
+  input:-webkit-autofill,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--color-ink);
+    -webkit-box-shadow: 0 0 0 1000px var(--color-surface-2) inset;
+    caret-color: var(--color-ink);
+    transition: background-color 5000s ease-in-out 0s;
+  }
+}
+
+@utility pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+@utility pt-safe {
+  padding-top: max(env(safe-area-inset-top), 0px);
+}
+@utility mb-safe {
+  margin-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+
+@utility glass {
+  background: color-mix(in srgb, var(--color-surface) 78%, transparent);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+}
+
+@utility scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+  background-clip: padding-box;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--color-surface-3);
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 15px;
+  width: 15px;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  border: 2px solid var(--color-surface);
+}
+input[type="range"]::-moz-range-thumb {
+  height: 15px;
+  width: 15px;
+  border: 2px solid var(--color-surface);
+  border-radius: 9999px;
+  background: var(--color-accent);
+  cursor: pointer;
+}
+
 .form-wrapper {
   position: relative;
   width: 100%;
@@ -25,7 +176,7 @@ canvas {
   width: 100%;
   opacity: 0;
   transform: translateX(40px);
-  transition: all 0.5s ease;
+  transition: all 0.5s var(--ease-out-soft);
   pointer-events: none;
 }
 
@@ -43,29 +194,29 @@ canvas {
 }
 
 @keyframes slideIn {
-    from {
-        transform: translateX(100%);
-    }
-    to {
-        transform: translateX(0);
-}
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
 @keyframes shrink {
-    from {
-        width: 100%;
-    }
-    to {
-        width: 0;
-}
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0;
+  }
 }
 
 .animate-slideIn {
-animation: slideIn 0.5s ease-out forwards;
+  animation: slideIn 0.5s ease-out forwards;
 }
 
 .animate-shrink {
-animation: shrink 5s linear forwards;
+  animation: shrink 5s linear forwards;
 }
 
 #croptype {
@@ -82,9 +233,9 @@ animation: shrink 5s linear forwards;
   overflow: hidden;
 }
 
-.loader{
+.loader {
   border: 5px solid rgba(255, 255, 255, 0.3);
-  border-top: 5px solid #FF3366;
+  border-top: 5px solid var(--color-accent);
   border-radius: 60%;
   width: 120px;
   height: 120px;
@@ -92,24 +243,25 @@ animation: shrink 5s linear forwards;
   padding: 4em;
 }
 
-.loading-screen{
+.loading-screen {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
   backdrop-filter: blur(10px);
-  background: black;;
+  background: var(--color-background);
   display: flex;
   justify-content: center;
   align-items: center;
 }
+
 .popup {
   background: #fff;
   position: absolute;
-  width:300px;
+  width: 300px;
   top: 0;
-  z-index:30;
+  z-index: 30;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.1);
   text-align: center;
@@ -136,9 +288,9 @@ animation: shrink 5s linear forwards;
 .popup button {
   position: absolute;
   padding: 16px;
-  top:-15px;
-  right:-15px;
-  background: rgba(255,2,2,0.9);
+  top: -15px;
+  right: -15px;
+  background: rgba(255, 2, 2, 0.9);
   font-size: 18px;
   cursor: pointer;
   box-shadow: 0 5px 10px rgba(0, 0, 0, 0.4);
@@ -181,5 +333,28 @@ animation: shrink 5s linear forwards;
   }
   to {
     opacity: 0;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes dragPop {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }

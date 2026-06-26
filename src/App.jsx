@@ -7,6 +7,7 @@ const Editor = lazy(()=>import("./components/MainEditor/UI/Editor"))
 import { Routes, Route, Navigate, useLocation} from "react-router-dom"
 import ClipLoader from "react-spinners/HashLoader"
 import { UserProvider, useUser } from "./store/UserContext";
+import { LoaderProvider } from "./store/LoaderContext";
 
 function PrivateRoute({ children }) {
   const token = localStorage.getItem("refresh_token");
@@ -61,7 +62,9 @@ function App() {
       <Route path="/" element={
         <UserProvider addToast={addToast} >
           <PrivateRoute addToast={addToast} >
-            <EditorWithLoader addToast={addToast}/>
+            <LoaderProvider>
+              <EditorWithLoader addToast={addToast}/>
+            </LoaderProvider>
           </PrivateRoute>
         </UserProvider>
         } />

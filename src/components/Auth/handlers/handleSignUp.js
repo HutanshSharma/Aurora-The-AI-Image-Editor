@@ -1,10 +1,12 @@
+import { API_BASE } from '../../../utils/config';
+
 export default function handleSignUp(signupData, requirements, addToast, setIsLogin, setIsLoading){
   if(signupData.name === '' || signupData.email === '' || signupData.password === ''){
     addToast('Required Fields are empty','error')
     return 
   }
   if(!isValidEmail(signupData.email)){
-    addToast("Email I'd is not valid", 'error')
+    addToast("Email ID is not valid", 'error')
     return 
   }
   if(!requirements.length || !requirements.numberOrSymbol || !requirements.caseRequirement){
@@ -20,7 +22,7 @@ export default function handleSignUp(signupData, requirements, addToast, setIsLo
 
   (async function(){
     try{
-      const response = await fetch("http://localhost:8000/auth/",{
+      const response = await fetch(`${API_BASE}/auth/`,{
       method:"POST",
       body:JSON.stringify({
         username : signupData.name,
@@ -45,7 +47,7 @@ export default function handleSignUp(signupData, requirements, addToast, setIsLo
     }
 
     try{
-      const token = await fetch("http://localhost:8000/auth/token",{
+      const token = await fetch(`${API_BASE}/auth/token`,{
         method:"POST",
         body:JSON.stringify({"email":signupData.email,
                             "password" : signupData.password
@@ -65,7 +67,7 @@ export default function handleSignUp(signupData, requirements, addToast, setIsLo
       sessionStorage.setItem('access_token',tokenData['access_token'])
     }
     catch(error){
-      console.log(error)
+      console.error(error)
       addToast('Something went wrong. Please try logging in.','invalid')
       setIsLogin(true)
       setIsLoading(false);
@@ -73,7 +75,7 @@ export default function handleSignUp(signupData, requirements, addToast, setIsLo
     }
 
     try{
-        const refresh_token = await fetch("http://localhost:8000/auth/refresh_token",{
+        const refresh_token = await fetch(`${API_BASE}/auth/refresh_token`,{
           method:"POST",
           body:JSON.stringify({"email":signupData.email,
                               "password" :signupData.password

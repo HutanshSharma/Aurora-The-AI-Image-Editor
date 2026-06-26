@@ -1,4 +1,6 @@
-export default function handleResetPassword(password,requirements,addToast,token){
+import { API_BASE } from '../../../utils/config';
+
+export default function handleResetPassword(password,requirements,addToast,token,navigate){
     if(password.password === '' || password.confirmpassword === ''){
     addToast('Required Fields are empty','error')
     return 
@@ -14,7 +16,7 @@ export default function handleResetPassword(password,requirements,addToast,token
 
     (async function(){
       try{
-        const response = await fetch(`http://localhost:8000/auth/reset_password/${token}`,{
+        const response = await fetch(`${API_BASE}/auth/reset_password/${token}`,{
           method:"PUT",
           body:JSON.stringify({"password" :password.password}),
           headers:{
@@ -28,6 +30,7 @@ export default function handleResetPassword(password,requirements,addToast,token
           return
         }
         addToast("Your password has been changed successfully.","success")
+        setTimeout(() => navigate?.('/auth', { replace: true }), 1200)
       }
       catch(error){
         addToast('Something went wrong. Please try again later.','invalid')

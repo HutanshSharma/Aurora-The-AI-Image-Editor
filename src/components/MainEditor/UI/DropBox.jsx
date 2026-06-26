@@ -1,26 +1,24 @@
-import { forwardRef } from "react";
-import { Sliders } from "lucide-react";
+import { forwardRef } from 'react';
+import { Wand2 } from 'lucide-react';
 
-const DropBox = forwardRef(({}, ref) => {
+const DropBox = forwardRef((_, ref) => {
   return (
     <div
       ref={ref}
-      className="
-        absolute top-28 right-4 z-40
-        bg-linear-to-br from-blue-500/10 to-indigo-500/10
-        border border-blue-400/50 rounded-2xl
-        backdrop-blur-md shadow-lg
-        p-5 w-56
-        flex flex-col items-center justify-center
-        transition-all duration-300 hover:border-blue-400 hover:shadow-blue-500/30
-      "
+      className="absolute right-4 top-24 z-40 flex w-52 flex-col items-center justify-center gap-2.5
+                 rounded-2xl border-2 border-dashed border-accent/50 bg-accent-soft p-5 text-center
+                 glass shadow-glow transition-colors duration-300 hover:border-accent"
     >
-      <Sliders size={36} className="text-blue-400 mb-2" />
-      <p className="text-[13px] text-blue-200 text-center mb-2">
-        Drop here to edit the segmented part
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent/20 text-accent">
+        <Wand2 size={24} />
+      </div>
+      <p className="text-[13px] leading-snug text-ink/90">
+        Drop here to edit the cut-out
       </p>
     </div>
   );
 });
+
+DropBox.displayName = 'DropBox';
 
 export default DropBox;

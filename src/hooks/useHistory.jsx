@@ -27,8 +27,7 @@ export default function useHistory(initialState) {
     setState(prev => {
       const newState = cmd.do(prev);
 
-      if (isSliderCommand) {
-      } else {
+      if (!isSliderCommand) {
         let stateChanged = true;
         
         if (forceStartValue !== null && forceFinalValue !== null) {
@@ -43,8 +42,7 @@ export default function useHistory(initialState) {
         }
         
         if (!stateChanged) {
-          console.log('State change too small, not creating history node');
-          return newState; 
+          return newState;
         }
         
         if (debounceTimeout.current) {
@@ -186,7 +184,6 @@ export default function useHistory(initialState) {
       });
       
       if (existingChild) {
-        console.log('Similar state detected, skipping branch creation');
         return existingChild;
       }
     }

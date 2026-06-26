@@ -1,35 +1,55 @@
 import gsap from "gsap";
-import { useGSAP } from "@gsap/react"
+import { useGSAP } from "@gsap/react";
 import { useRef } from "react";
+import { Sparkles, Wand2, Layers } from "lucide-react";
+
+const features = [
+  { icon: Wand2, label: "Smart one-tap editing" },
+  { icon: Layers, label: "Cut out & restyle any object" },
+  { icon: Sparkles, label: "Cinematic color grading" },
+];
 
 export default function Panel() {
-  const info = useRef()
+  const info = useRef(null);
 
-  useGSAP(()=>{
+  useGSAP(() => {
     gsap.from(info.current.querySelectorAll(".box"), {
-      x: -100,
+      y: 24,
       opacity: 0,
       duration: 0.6,
-      stagger: 0.3,
+      stagger: 0.12,
       ease: "power2.out",
     });
-  })
+  });
 
   return (
-    <div className="md:hidden flex items-center justify-center p-8 relative overflow-hidden">
-      <div className="relative z-10 max-w-5xl w-full">
-        <div className="bg-[rgba(0,0,0,0.7)] backdrop-blur-xl rounded-none border-l-4 border-red-600 shadow-2xl p-8" ref={info}>
-            <h1 className="text-3xl md:text-8xl font-bold mb-8 text-white leading-[1.1] tracking-tight box">
-            Aurora
-            </h1>
-
-            <h2 className="text-2xl md:text-5xl font-light text-red-300/90 box">
-              The AI Editor
-            </h2>
-          
-          <div className="mt-8 w-24 h-1 bg-linear-to-r from-red-500 to-transparent" />
-        </div>
+    <div ref={info} className="relative w-full max-w-md">
+      <div className="box inline-flex items-center gap-2 rounded-full border border-line bg-white/5 px-3 py-1.5 text-[12px] font-medium text-muted">
+        <span className="h-1.5 w-1.5 rounded-full bg-accent shadow-glow" />
+        AI Image Editor
       </div>
+
+      <h1 className="box mt-6 bg-linear-to-br from-white via-white to-accent/70 bg-clip-text text-6xl font-bold leading-[1.05] tracking-tight text-transparent md:text-7xl">
+        Aurora
+      </h1>
+
+      <p className="box mt-4 max-w-sm text-lg font-light text-muted">
+        Studio-grade edits, right from your phone. Cut, restyle, and grade your
+        photos in a few taps.
+      </p>
+
+      <div className="box mt-6 h-px w-24 bg-linear-to-r from-accent to-transparent" />
+
+      <ul className="mt-8 space-y-3">
+        {features.map(({ icon: Icon, label }) => (
+          <li key={label} className="box flex items-center gap-3 text-sm text-ink/90">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-2 text-accent">
+              <Icon size={17} />
+            </span>
+            {label}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

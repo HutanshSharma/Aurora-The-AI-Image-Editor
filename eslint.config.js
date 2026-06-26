@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'env', 'venv', '.venv']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [
@@ -23,7 +23,19 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Unused catch bindings (e.g. `catch (error) {}`) are idiomatic and not
+      // bugs; don't flag them. Still flag genuinely unused vars/imports.
+      // Capitalized names (vars AND args, e.g. a polymorphic `as: Tag` prop or
+      // a `<motion.div>` import) are treated as used: this flat config has no
+      // eslint-plugin-react, so JSX member/component usage isn't detected.
+      'no-unused-vars': [
+        'error',
+        {
+          varsIgnorePattern: '^[A-Z_]',
+          argsIgnorePattern: '^[A-Z_]',
+          caughtErrors: 'none',
+        },
+      ],
     },
   },
 ])

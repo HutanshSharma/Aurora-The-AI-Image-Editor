@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
-import { motion, useInView } from 'framer-motion';
-import { useUser } from '../../../../store/UserContext';
-import AnimatedItem from "./AnimatedItem"
+import { ImageIcon } from 'lucide-react';
+import AnimatedItem from './AnimatedItem';
+import EmptyState from '../../../ui/EmptyState';
 
 export default function AnimatedList({
   items,
@@ -12,32 +12,34 @@ export default function AnimatedList({
   loaded,
   className = '',
   displayScrollbar = true,
-  initialSelectedIndex = -1}) {
-
+  initialSelectedIndex = -1,
+}) {
   const listRef = useRef(null);
   const [selectedIndex, setSelectedIndex] = useState(initialSelectedIndex);
   const [keyboardNav, setKeyboardNav] = useState(false);
   const [topGradientOpacity, setTopGradientOpacity] = useState(0);
   const [bottomGradientOpacity, setBottomGradientOpacity] = useState(1);
 
-  const handleScroll = e => {
+  const handleScroll = (e) => {
     const { scrollTop, scrollHeight, clientHeight } = e.target;
     setTopGradientOpacity(Math.min(scrollTop / 50, 1));
     const bottomDistance = scrollHeight - (scrollTop + clientHeight);
-    setBottomGradientOpacity(scrollHeight <= clientHeight ? 0 : Math.min(bottomDistance / 50, 1));
+    setBottomGradientOpacity(
+      scrollHeight <= clientHeight ? 0 : Math.min(bottomDistance / 50, 1),
+    );
   };
 
   useEffect(() => {
     if (!enableArrowNavigation) return;
-    const handleKeyDown = e => {
+    const handleKeyDown = (e) => {
       if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
         e.preventDefault();
         setKeyboardNav(true);
-        setSelectedIndex(prev => Math.min(prev + 1, items.length - 1));
+        setSelectedIndex((prev) => Math.min(prev + 1, items.length - 1));
       } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
         e.preventDefault();
         setKeyboardNav(true);
-        setSelectedIndex(prev => Math.max(prev - 1, 0));
+        setSelectedIndex((prev) => Math.max(prev - 1, 0));
       } else if (e.key === 'Enter') {
         if (selectedIndex >= 0 && selectedIndex < items.length) {
           e.preventDefault();
@@ -67,26 +69,33 @@ export default function AnimatedList({
       } else if (itemBottom > containerScrollTop + containerHeight - extraMargin) {
         container.scrollTo({
           top: itemBottom - containerHeight + extraMargin,
-          behavior: 'smooth'
+          behavior: 'smooth',
         });
       }
     }
     setKeyboardNav(false);
   }, [selectedIndex, keyboardNav]);
 
+  if (loaded && items.length === 0) {
+    return (
+      <div className={`w-full max-w-xl ${className}`}>
+        <EmptyState
+          icon={<ImageIcon size={26} />}
+          title="No images yet"
+          description="Tap “Add” in the top bar to upload your first photo and start editing."
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className={`relative w-[500px] ${className}`}>
+    <div className={`relative w-full max-w-xl ${className}`}>
       <div
         ref={listRef}
-        className={`max-h-[650px] md:max-h-[600px] overflow-y-auto p-4 space-y-10 ${displayScrollbar
-          ? '[&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-[#060010] [&::-webkit-scrollbar-thumb]:bg-[#222] [&::-webkit-scrollbar-thumb]:rounded-sm'
-          : 'scrollbar-hide'
-          }`}
+        className={`max-h-[72vh] space-y-4 overflow-y-auto px-2 py-4 ${
+          displayScrollbar ? 'scrollbar-slim' : 'scrollbar-hide'
+        }`}
         onScroll={handleScroll}
-        style={{
-          scrollbarWidth: displayScrollbar ? 'thin' : 'none',
-          scrollbarColor: '#222 #060010'
-        }}
       >
         {items.map((item, index) => (
           <AnimatedItem
@@ -108,15 +117,15 @@ export default function AnimatedList({
       {showGradients && (
         <>
           <div
-            className="absolute top-0 left-0 right-0 h-[50px] bg-linear-to-b from-[#060010] to-transparent pointer-events-none transition-opacity duration-300 ease"
+            className="pointer-events-none absolute inset-x-0 top-0 h-12 bg-linear-to-b from-background to-transparent transition-opacity duration-300"
             style={{ opacity: topGradientOpacity }}
-          ></div>
+          />
           <div
-            className="absolute bottom-0 left-0 right-0 h-[100px] bg-linear-to-t from-[#060010] to-transparent pointer-events-none transition-opacity duration-300 ease"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-background to-transparent transition-opacity duration-300"
             style={{ opacity: bottomGradientOpacity }}
-          ></div>
+          />
         </>
       )}
     </div>
   );
-};
+}

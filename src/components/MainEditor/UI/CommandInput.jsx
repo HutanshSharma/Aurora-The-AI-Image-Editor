@@ -1,8 +1,9 @@
-import {Mic, Send, Volume2} from "lucide-react"
+import { Mic, Send, Square } from "lucide-react"
 import { useState, useRef, useEffect } from "react"
 import { processCommand, processCommandWithAI} from "../Utils/CommandInputUtils"
+import { cn } from "../../ui/cn"
 
-export default function CommandInput({selectedObject, className, execute, editorState, Command}){
+export default function CommandInput({selectedObject, className, execute, editorState, Command, addToast}){
     const [isListening, setIsListening] = useState(false)
     const [isProcessing, setIsProcessing] = useState(false)
     const [useWebSpeech, setUseWebSpeech] = useState(false)
@@ -10,7 +11,7 @@ export default function CommandInput({selectedObject, className, execute, editor
     const [audioLevel, setAudioLevel] = useState(0)
     const [commandFeedback, setCommandFeedback] = useState(null)
     const [aiModel, setAiModel] = useState(null)
-    const [modelLoading, setModelLoading] = useState(false)
+    const [, setModelLoading] = useState(false)
     const [modelStatus, setModelStatus] = useState('not-loaded')
     
     const recognitionRef = useRef(null)
@@ -102,14 +103,10 @@ export default function CommandInput({selectedObject, className, execute, editor
 
             recognitionRef.current.onresult = (event) => {
                 let finalTranscript = ''
-                let interimTranscript = ''
-
                 for (let i = event.resultIndex; i < event.results.length; i++) {
                     const transcript = event.results[i][0].transcript
                     if (event.results[i].isFinal) {
                         finalTranscript += transcript
-                    } else {
-                        interimTranscript += transcript
                     }
                 }
 
@@ -137,11 +134,11 @@ export default function CommandInput({selectedObject, className, execute, editor
                 setAudioLevel(0)
                 
                 if (event.error === 'not-allowed') {
-                    alert('Microphone access denied. Please enable microphone permissions.')
+                    addToast?.('Microphone access denied. Enable microphone permissions.', 'error')
                 } else if (event.error === 'no-speech') {
-                    alert('No speech detected. Please try again.')
+                    addToast?.('No speech detected. Please try again.', 'info')
                 } else {
-                    alert('Speech recognition error. Please try again.')
+                    addToast?.('Speech recognition error. Please try again.', 'error')
                 }
             }
         }
@@ -178,7 +175,7 @@ export default function CommandInput({selectedObject, className, execute, editor
 
     const startRecording = async () => {
         if (!useWebSpeech || !recognitionRef.current) {
-            alert("Speech recognition is not available in this browser. Please type your command instead.")
+            addToast?.('Speech recognition is not available in this browser — type your command instead.', 'info')
             return
         }
 
@@ -193,9 +190,9 @@ export default function CommandInput({selectedObject, className, execute, editor
             setIsListening(false)
             
             if (error.name === 'NotAllowedError') {
-                alert("Microphone access denied. Please enable microphone permissions and try again.")
+                addToast?.('Microphone access denied. Enable microphone permissions and try again.', 'error')
             } else {
-                alert("Could not start speech recognition. Please try again.")
+                addToast?.('Could not start speech recognition. Please try again.', 'error')
             }
         }
     }
@@ -245,7 +242,8 @@ export default function CommandInput({selectedObject, className, execute, editor
             } else {
                 setCommandFeedback('error')
                 setTimeout(() => setCommandFeedback(null), 3000)
-            }            
+                if (addToast) addToast('This feature is currently unavailable.', 'error')
+            }
             setInputText("")
         }
     }
@@ -256,104 +254,78 @@ export default function CommandInput({selectedObject, className, execute, editor
         }
     }
 
+    const hasText = inputText.trim().length > 0;
+    const micUnavailable = !hasText && !useWebSpeech;
+
     return (
-        <>
-        <div className={`mt-6 bg-black/30 backdrop-blur-md rounded-2xl p-4 ${className} w-full`}>
-            <div className="flex gap-2">
+        <div className={cn('mx-auto w-full max-w-2xl', className)}>
+            {/* Unified pill: text + one morphing action button (mic ↔ send ↔ stop) */}
+            <div className="flex h-12 items-center rounded-full border border-line bg-surface-2 pl-4 pr-1.5 shadow-soft transition-colors focus-within:border-accent/60">
               <input
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder={modelStatus === 'ready' 
-                    ? "AI-powered commands: 'make this brighter', 'apply cinematic filter', 'increase saturation by 30'..."
-                    : "Smart commands: 'increase brightness', 'apply warm filter', 'flip horizontal', 'reset all'..."
+                placeholder={isListening
+                    ? 'Listening…'
+                    : modelStatus === 'ready'
+                      ? 'Describe an edit, or tap the mic…'
+                      : 'Type a command, or tap the mic…'
                 }
                 disabled={isProcessing}
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50"
+                className="min-w-0 flex-1 bg-transparent text-[15px] text-ink placeholder:text-faint outline-none disabled:opacity-50"
               />
-              <div className="relative">
-                <button
-                  onClick={handleMicClick}
-                  disabled={isProcessing || !useWebSpeech}
-                  className={`p-3 rounded-lg transition-all duration-300 transform relative overflow-hidden ${
-                    isProcessing 
-                      ? 'bg-yellow-500 animate-pulse' 
-                      : isListening 
-                        ? 'bg-red-500 animate-pulse scale-110' 
-                        : useWebSpeech
-                          ? 'bg-blue-500 hover:bg-blue-600 hover:scale-105'
-                          : 'bg-gray-500 cursor-not-allowed'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  title={!useWebSpeech ? "Speech recognition unavailable in this browser" : isListening ? "Stop recording" : "Start voice recording"}
-                >
-                  {isListening && (
-                    <div 
-                      className="absolute inset-0 bg-white/20 rounded-lg transition-all duration-150"
-                      style={{ 
-                        transform: `scaleY(${0.3 + audioLevel * 0.7})`,
-                        transformOrigin: 'center'
-                      }}
-                    />
-                  )}
-                  
-                  <div className="relative z-10">
-                    {isProcessing ? (
-                      <div className="animate-spin">⏳</div>
-                    ) : isListening ? (
-                      <div className="flex items-center gap-1">
-                        <Volume2 size={16} className="animate-pulse" />
-                        <Mic size={16} />
-                      </div>
-                    ) : (
-                      <Mic size={20} className={!useWebSpeech ? "opacity-50" : ""} />
-                    )}
-                  </div>
-                </button>
+              <button
+                onClick={hasText ? handleSendCommand : handleMicClick}
+                disabled={isProcessing || micUnavailable}
+                aria-label={hasText ? 'Send command' : isListening ? 'Stop recording' : 'Start voice input'}
+                className={cn(
+                  'relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full transition-all duration-200 active:scale-90',
+                  isListening
+                    ? 'bg-danger text-white'
+                    : micUnavailable
+                      ? 'cursor-not-allowed bg-surface-3 text-faint'
+                      : 'bg-accent text-white hover:bg-accent-hover',
+                )}
+              >
                 {isListening && (
-                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
+                  <span
+                    className="absolute inset-0 bg-white/25 transition-transform duration-150"
+                    style={{ transform: `scaleY(${0.3 + audioLevel * 0.7})`, transformOrigin: 'center' }}
+                  />
                 )}
-              </div>
-              <div className={`transition-all duration-300 ${inputText.trim() ? 'w-10 opacity-100' : 'w-0 opacity-0 overflow-hidden'}`}>
-                <button
-                  onClick={handleSendCommand}
-                  disabled={!inputText.trim() || isListening}
-                  className="p-3 bg-green-500 hover:bg-green-600 rounded-lg transition-all duration-200 transform hover:scale-105 disabled:opacity-50"
-                >
-                  <Send size={20} />
-                </button>
-              </div>
+                <span className="relative z-10 flex items-center justify-center">
+                  {isProcessing ? (
+                    <span className="animate-spin text-sm">⏳</span>
+                  ) : isListening ? (
+                    <Square size={14} className="fill-current" />
+                  ) : hasText ? (
+                    <Send size={17} />
+                  ) : (
+                    <Mic size={18} />
+                  )}
+                </span>
+              </button>
             </div>
-            <div className="flex items-center justify-between mt-2">
-              {selectedObject && (
-                <p className="text-xs text-gray-400">
-                  Selected: {selectedObject.name}
-                </p>
-              )}
-              
-              <div className="flex items-center gap-2 text-xs h-10">
-                {!useWebSpeech && (
-                  <span className="text-gray-400">• Voice unavailable</span>
-                )}
-                {isListening ? (
-                  <span className="text-red-400 animate-pulse flex items-center gap-1">
-                    <div className="w-2 h-2 bg-red-400 rounded-full animate-ping"></div>
-                    Listening...
-                  </span>) :
-                  <span></span>
-                }
-                {isProcessing && (
-                  <span className="text-blue-400">Processing speech...</span>
-                )}
-                {commandFeedback === 'success' && (
-                  <span className="text-green-400 animate-pulse">✓ Command executed</span>
-                )}
-                {commandFeedback === 'error' && (
-                  <span className="text-red-400">Command not recognized</span>
-                )}
-              </div>
+
+            <div className="mt-1.5 flex min-h-4 items-center justify-center gap-2 text-[12px]">
+              {isListening ? (
+                <span className="flex items-center gap-1.5 text-danger">
+                  <span className="h-2 w-2 animate-ping rounded-full bg-danger" />
+                  Listening…
+                </span>
+              ) : isProcessing ? (
+                <span className="text-info">Processing speech…</span>
+              ) : commandFeedback === 'success' ? (
+                <span className="text-success">✓ Command executed</span>
+              ) : commandFeedback === 'error' ? (
+                <span className="text-danger">Command not recognized</span>
+              ) : micUnavailable ? (
+                <span className="text-faint">Voice unavailable — type instead</span>
+              ) : selectedObject ? (
+                <span className="text-muted">Selected: {selectedObject.name}</span>
+              ) : null}
             </div>
-          </div>
-        </>
+        </div>
     )
 }

@@ -1,5 +1,6 @@
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException, BackgroundTasks
+from fastapi import APIRouter, File, UploadFile, Form, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse
+from .auth import get_current_user
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 import io
@@ -12,7 +13,8 @@ import numpy as np
 
 router = APIRouter(
     tags=["/inpainting"],
-    prefix="/inpainting"
+    prefix="/inpainting",
+    dependencies=[Depends(get_current_user)]
 )
 
 

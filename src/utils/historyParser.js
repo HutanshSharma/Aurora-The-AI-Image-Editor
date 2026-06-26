@@ -13,7 +13,7 @@ export function parseHistory(initialState, historyTree, currentNodeId) {
       timestamp: Date.now(),
       isCurrent: currentNodeId === null,
       parentId: null,
-      children: historyTree.filter(n => n.parentId === null).map(n => n.id),
+      children: [],
       depth: 0,
       branchIndex: 0
     }];
@@ -89,25 +89,4 @@ function generateLabel(state, id) {
   }
 
   return changes.slice(0, 2).join(', ') + (changes.length > 2 ? '...' : '');
-}
-
-/**
- * @param {Array} historyTree 
- * @param {number} nodeId
- * @returns {Array}
- */
-export function getPathToNode(historyTree, nodeId) {
-  if (nodeId === null) return [];
-  
-  const path = [];
-  let currentId = nodeId;
-  
-  while (currentId !== null) {
-    const node = historyTree.find(n => n.id === currentId);
-    if (!node) break;
-    path.unshift(currentId);
-    currentId = node.parentId;
-  }
-  
-  return path;
 }

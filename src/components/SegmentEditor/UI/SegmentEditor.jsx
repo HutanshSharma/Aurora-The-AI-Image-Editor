@@ -1,18 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
-import { FlipHorizontal, FlipVertical, ZoomIn, Palette, Save } from "lucide-react";
+import { SlidersHorizontal, Palette, Image as ImageIcon, Download, ZoomIn, Sparkles, X, Save } from "lucide-react";
+import { useUser } from '../../../store/UserContext';
+import { useLoader } from '../../../store/LoaderContext';
 import {handleWheel, handleTouchMovePinch, handleTouchEndPinch, handlePanStart, handlePanMove, handlePanEnd} from "../../MainEditor/Utils/CanvasUtils"
 import SegmentHeader from './SegmentHeader';
-import GalleryView from '../../SegmentEditor/UI/GalleryView';
-import QuickActions from '../../SegmentEditor/UI/QuickActions';
-import SegmentFooter from './SegmentFooter';
-import EditingOptions from '../../SegmentEditor/UI/EditingOptions';
-import BackgroundPanel from '../../SegmentEditor/UI/BackgroundPanel';
-import EditSlider from '../../SegmentEditor/UI/EditSlider';
-import useHistory from '../../../hooks/useHistory';
+import GalleryView from './GalleryView';
+import BackgroundPanel from './BackgroundPanel';
+import AdjustBar from '../../MainEditor/UI/AdjustBar';
 import LUTSlider from '../../MainEditor/UI/LUTSlider';
+import CommandInput from '../../MainEditor/UI/CommandInput';
+import useHistory from '../../../hooks/useHistory';
 import { loadLUT, applyLUT } from '../../MainEditor/Utils/LUTUtils';
-import { inpaintingAPI } from '../../../utils/inpaintingAPI';
-import ClipLoader from "react-spinners/HashLoader";
 
 export class Command {
   constructor(doFn, undoFn) {
@@ -21,16 +19,26 @@ export class Command {
   }
 }
 
-export default function SegmentEditor({ setShowEditor, droppedObjects, onSave }) {
+function ToolButton({ icon: Icon, label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex flex-1 flex-col items-center gap-1.5 py-1 text-muted transition-colors hover:text-ink active:scale-95 sm:w-[76px] sm:flex-none"
+    >
+      <span className="flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface-2 text-ink">
+        <Icon size={20} />
+      </span>
+      <span className="text-[11px] font-medium">{label}</span>
+    </button>
+  );
+}
+
+export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, addToast }) {
   const [selectedObjectIndex, setSelectedObjectIndex] = useState(droppedObjects.length-1);
   const [viewMode, setViewMode] = useState('edit');
   const [selectedEditOption, setSelectedEditOption] = useState(null);
-  const [sidebarView, setSidebarView] = useState('editing');
-  const [isMobileToolbarOpen, setIsMobileToolbarOpen] = useState(false);
-  const [showLUTSelector, setShowLUTSelector] = useState(false);
+  const [activePanel, setActivePanel] = useState(null);
   const [loadedLUT, setLoadedLUT] = useState(null);
-  const [isAIProcessing, setIsAIProcessing] = useState(false);
-  const [aiTask, setAiTask] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   
   const [zoom, setZoom] = useState(1);
@@ -38,9 +46,16 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
   const isDraggingRef = useRef(false);
   const lastDragPosRef = useRef({ x: 0, y: 0 });
   const lastDistanceRef = useRef(null);
+  const dragModeRef = useRef('background');
+  const hitCanvasRef = useRef({ img: null });
+  const segLutBaseRef = useRef(null); 
+  const segProcessedRef = useRef(null); 
   
   const canvasRef = useRef(null);
   const backgroundInputRef = useRef(null);
+
+  const { uploadImage } = useUser();
+  const { showLoader, hideLoader } = useLoader();
 
   const {
     state: editorState,
@@ -86,6 +101,31 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
   }, [editorState.selectedLUT]);
 
   useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w && h) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        setCanvasSize({ width: Math.round(w * dpr), height: Math.round(h * dpr) });
+      }
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const img = currentObject?.image;
+    if (!img || img.complete) return;
+    const bump = () => setCanvasSize((s) => ({ ...s }));
+    img.addEventListener('load', bump, { once: true });
+    return () => img.removeEventListener('load', bump);
+  }, [currentObject]);
+
+  useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -120,124 +160,6 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
     reader.readAsDataURL(file);
   };
 
-  const enhanceWithBackground = async (backgroundImg) => {
-    if (!currentObject?.image || !backgroundImg) return;
-    
-    setIsAIProcessing(true);
-    try {
-      const compositeCanvas = document.createElement('canvas');
-      compositeCanvas.width = canvasSize.width;
-      compositeCanvas.height = canvasSize.height;
-      const compositeCtx = compositeCanvas.getContext('2d');
-      
-      const bgW = compositeCanvas.width * editorState.backgroundScale;
-      const bgH = compositeCanvas.height * editorState.backgroundScale;
-      const bgX = (compositeCanvas.width - bgW) / 2 + editorState.backgroundPos.x;
-      const bgY = (compositeCanvas.height - bgH) / 2 + editorState.backgroundPos.y;
-      compositeCtx.drawImage(backgroundImg, bgX, bgY, bgW, bgH);
-      
-      const imgW = currentObject.width * editorState.imageScale;
-      const imgH = currentObject.height * editorState.imageScale;
-      const imgX = (compositeCanvas.width - imgW) / 2 + editorState.imagePos.x;
-      const imgY = (compositeCanvas.height - imgH) / 2 + editorState.imagePos.y;
-      compositeCtx.drawImage(currentObject.image, imgX, imgY, imgW, imgH);
-      
-      const mergedBlob = await new Promise(resolve => compositeCanvas.toBlob(resolve, 'image/png'));
-      
-      const formData = new FormData();
-      formData.append('merged_file', mergedBlob, 'merged.png');
-      
-      const response = await fetch('http://localhost:8000/inpainting/enhance-merged-lighting', {
-        method: 'POST',
-        body: formData
-      });
-      
-      if (!response.ok) throw new Error('Enhancement failed');
-      
-      const result = await response.json();
-      
-      if (result.success && result.enhanced_image) {
-        const enhancedImg = new Image();
-        enhancedImg.onload = () => {
-          const newObject = {
-            ...currentObject,
-            image: enhancedImg,
-            width: enhancedImg.width,
-            height: enhancedImg.height
-          };
-          
-          execute(new Command(
-            (s) => {
-              const newObjects = [...s.editedObjects];
-              newObjects[selectedObjectIndex] = newObject;
-              return { ...s, editedObjects: newObjects };
-            },
-            (s) => ({ ...s })
-          ));
-        };
-        enhancedImg.src = result.enhanced_image;
-      }
-    } catch (error) {
-      console.error('Background enhancement failed:', error);
-      alert('Failed to enhance lighting. Please try again.');
-    } finally {
-      setIsAIProcessing(false);
-    }
-  };
-
-  const saveImageWithBackground = () => {
-    const exportCanvas = document.createElement('canvas');
-    const ctx = exportCanvas.getContext('2d', { alpha: true });
-    exportCanvas.width = canvasSize.width;
-    exportCanvas.height = canvasSize.height;
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    
-    if (editorState.customBackground) {
-      const bgW = exportCanvas.width * editorState.backgroundScale;
-      const bgH = exportCanvas.height * editorState.backgroundScale;
-      const bgX = (exportCanvas.width - bgW) / 2 + editorState.backgroundPos.x;
-      const bgY = (exportCanvas.height - bgH) / 2 + editorState.backgroundPos.y;
-      ctx.drawImage(editorState.customBackground, bgX, bgY, bgW, bgH);
-    } else if (editorState.backgroundColor) {
-      ctx.fillStyle = editorState.backgroundColor;
-      const bgW = exportCanvas.width * editorState.backgroundScale;
-      const bgH = exportCanvas.height * editorState.backgroundScale;
-      const bgX = (exportCanvas.width - bgW) / 2 + editorState.backgroundPos.x;
-      const bgY = (exportCanvas.height - bgH) / 2 + editorState.backgroundPos.y;
-      ctx.fillRect(bgX, bgY, bgW, bgH);
-    }
-    
-    const imgW = currentObject.width * editorState.imageScale;
-    const imgH = currentObject.height * editorState.imageScale;
-    const imgX = (exportCanvas.width - imgW) / 2 + editorState.imagePos.x;
-    const imgY = (exportCanvas.height - imgH) / 2 + editorState.imagePos.y;
-    
-    ctx.save();
-    ctx.translate(imgX + imgW / 2, imgY + imgH / 2);
-    
-    if (editorState.flipH) ctx.scale(-1, 1);
-    if (editorState.flipV) ctx.scale(1, -1);
-    
-    ctx.rotate((editorState.rotation * Math.PI) / 180);
-    ctx.translate(-(imgW / 2), -(imgH / 2));
-    
-    let filterString = `brightness(${editorState.brightness}%) contrast(${editorState.contrast}%) saturate(${editorState.saturation}%) blur(${editorState.blur}px) hue-rotate(${editorState.hue}deg)`;
-    if (editorState.sharpen > 0) {
-      filterString += ` contrast(${100 + editorState.sharpen}%)`;
-    }
-    ctx.filter = filterString;
-    ctx.globalAlpha = editorState.opacity / 100;
-    
-    ctx.drawImage(currentObject.image, 0, 0, imgW, imgH);
-    ctx.restore();
-    
-    const link = document.createElement('a');
-    link.download = `${currentObject.name}_with_background.png`;
-    link.href = exportCanvas.toDataURL('image/png', 1.0);
-    link.click();
-  };
-
   useEffect(() => {
     if (!canvasRef.current || !currentObject?.image?.complete) return;
 
@@ -256,11 +178,15 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
     if (editorState.customBackground && editorState.customBackground.complete) {
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      const bgW = canvas.width * editorState.backgroundScale;
-      const bgH = canvas.height * editorState.backgroundScale;
+      const bg = editorState.customBackground;
+      const bw = bg.naturalWidth || bg.width;
+      const bh = bg.naturalHeight || bg.height;
+      const cover = Math.max(canvas.width / bw, canvas.height / bh);
+      const bgW = bw * cover * editorState.backgroundScale;
+      const bgH = bh * cover * editorState.backgroundScale;
       const bgX = (canvas.width - bgW) / 2 + editorState.backgroundPos.x;
       const bgY = (canvas.height - bgH) / 2 + editorState.backgroundPos.y;
-      ctx.drawImage(editorState.customBackground, bgX, bgY, bgW, bgH);
+      ctx.drawImage(bg, bgX, bgY, bgW, bgH);
     } else if (editorState.backgroundColor) {
       ctx.fillStyle = editorState.backgroundColor;
       const bgW = canvas.width * editorState.backgroundScale;
@@ -270,67 +196,67 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
       ctx.fillRect(bgX, bgY, bgW, bgH);
     }
 
-    const imgW = currentObject.width * editorState.imageScale;
-    const imgH = currentObject.height * editorState.imageScale;
+    const fit = Math.min(canvas.width / currentObject.width, canvas.height / currentObject.height) * 0.7;
+    const imgW = currentObject.width * fit * editorState.imageScale;
+    const imgH = currentObject.height * fit * editorState.imageScale;
     const imgX = (canvas.width - imgW) / 2 + editorState.imagePos.x;
     const imgY = (canvas.height - imgH) / 2 + editorState.imagePos.y;
 
+    let segBase = currentObject.image;
     if (loadedLUT) {
-      const offscreenCanvas = document.createElement('canvas');
-      offscreenCanvas.width = currentObject.image.width;
-      offscreenCanvas.height = currentObject.image.height;
-      const offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
-      
-      offscreenCtx.imageSmoothingEnabled = true;
-      offscreenCtx.imageSmoothingQuality = 'high';
-      
-      offscreenCtx.save();
-      offscreenCtx.translate(offscreenCanvas.width / 2, offscreenCanvas.height / 2);
-      
-      if (editorState.flipH) offscreenCtx.scale(-1, 1);
-      if (editorState.flipV) offscreenCtx.scale(1, -1);
-      
-      offscreenCtx.rotate((editorState.rotation * Math.PI) / 180);
-      offscreenCtx.translate(-(offscreenCanvas.width / 2), -(offscreenCanvas.height / 2));
-      
-      let filterString = `brightness(${editorState.brightness}%) contrast(${editorState.contrast}%) saturate(${editorState.saturation}%) blur(${editorState.blur}px) hue-rotate(${editorState.hue}deg)`;
-      if (editorState.sharpen > 0) {
-        filterString += ` contrast(${100 + editorState.sharpen}%)`;
+      const c = segLutBaseRef.current;
+      if (!c || c.lut !== loadedLUT || c.img !== currentObject.image) {
+        const off = document.createElement('canvas');
+        off.width = currentObject.image.width;
+        off.height = currentObject.image.height;
+        const offCtx = off.getContext('2d', { willReadFrequently: true });
+        offCtx.drawImage(currentObject.image, 0, 0);
+        const data = offCtx.getImageData(0, 0, off.width, off.height);
+        offCtx.putImageData(applyLUT(data, loadedLUT), 0, 0);
+        segLutBaseRef.current = { canvas: off, lut: loadedLUT, img: currentObject.image };
       }
-      offscreenCtx.filter = filterString;
-      offscreenCtx.globalAlpha = editorState.opacity / 100;
-      
-      offscreenCtx.drawImage(currentObject.image, 0, 0);
-      offscreenCtx.restore();
-      
-      const imageData = offscreenCtx.getImageData(0, 0, offscreenCanvas.width, offscreenCanvas.height);
-      const lutAppliedData = applyLUT(imageData, loadedLUT);
-      offscreenCtx.putImageData(lutAppliedData, 0, 0);
-      
-      ctx.drawImage(offscreenCanvas, imgX, imgY, imgW, imgH);
+      segBase = segLutBaseRef.current.canvas;
     } else {
-      ctx.translate(imgX + imgW / 2, imgY + imgH / 2);
-      
-      if (editorState.flipH) ctx.scale(-1, 1);
-      if (editorState.flipV) ctx.scale(1, -1);
-      
-      ctx.rotate((editorState.rotation * Math.PI) / 180);
-      ctx.translate(-(imgW / 2), -(imgH / 2));
+      segLutBaseRef.current = null;
+    }
 
-      let filterString = `brightness(${editorState.brightness}%) contrast(${editorState.contrast}%) saturate(${editorState.saturation}%) blur(${editorState.blur}px) hue-rotate(${editorState.hue}deg)`;
-      if (editorState.sharpen > 0) {
-        filterString += ` contrast(${100 + editorState.sharpen}%)`;
+    const baseToken = loadedLUT ? segLutBaseRef.current : currentObject.image;
+    const colourKey = `${editorState.brightness}|${editorState.contrast}|${editorState.saturation}|${editorState.hue}|${editorState.sharpen}`;
+    const hasColour = colourKey !== '100|100|100|0|0';
+    const pc = segProcessedRef.current;
+    if (!pc || pc.base !== baseToken || pc.key !== colourKey) {
+      let processed = segBase;
+      if (hasColour) {
+        const pcv = document.createElement('canvas');
+        pcv.width = currentObject.image.width;
+        pcv.height = currentObject.image.height;
+        const pctx = pcv.getContext('2d');
+        pctx.imageSmoothingEnabled = true;
+        pctx.imageSmoothingQuality = 'high';
+        let f = `brightness(${editorState.brightness}%) contrast(${editorState.contrast}%) saturate(${editorState.saturation}%) hue-rotate(${editorState.hue}deg)`;
+        if (editorState.sharpen > 0) f += ` contrast(${100 + editorState.sharpen}%)`;
+        pctx.filter = f;
+        pctx.drawImage(segBase, 0, 0);
+        processed = pcv;
       }
-      ctx.filter = filterString;
-      ctx.globalAlpha = editorState.opacity / 100;
+      segProcessedRef.current = { canvas: processed, base: baseToken, key: colourKey };
+    }
+    const source = segProcessedRef.current.canvas;
 
-      try {
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(currentObject.image, 0, 0, imgW, imgH);
-      } catch (e) {
-        console.error('Error drawing image:', e);
-      }
+    ctx.translate(imgX + imgW / 2, imgY + imgH / 2);
+    if (editorState.flipH) ctx.scale(-1, 1);
+    if (editorState.flipV) ctx.scale(1, -1);
+    ctx.rotate((editorState.rotation * Math.PI) / 180);
+    ctx.translate(-(imgW / 2), -(imgH / 2));
+    const blurValue = Math.max(0, Math.min(20, editorState.blur || 0));
+    ctx.filter = blurValue > 0 ? `blur(${blurValue}px)` : 'none';
+    ctx.globalAlpha = editorState.opacity / 100;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    try {
+      ctx.drawImage(source, 0, 0, imgW, imgH);
+    } catch (e) {
+      console.error('Error drawing segment:', e);
     }
 
     ctx.restore();
@@ -370,9 +296,29 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
     link.click();
   };
 
+  const saveToLibrary = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas || isSaving) return;
+    setIsSaving(true);
+    showLoader('Saving to library…');
+    try {
+      const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+      if (!blob) throw new Error('Could not render the image');
+      const formData = new FormData();
+      formData.append('file', blob, `aurora_${Date.now()}.png`);
+      await uploadImage(formData);
+      addToast?.('Saved to your library.', 'success');
+    } catch (error) {
+      console.error('Save to library failed:', error);
+    } finally {
+      hideLoader();
+      setIsSaving(false);
+    }
+  };
+
   const deleteObject = () => {
     if (editorState.editedObjects.length === 1) {
-      alert('Cannot delete the last object');
+      addToast?.('Cannot delete the last object', 'info');
       return;
     }
     execute(new Command(
@@ -385,185 +331,17 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
     setSelectedObjectIndex(Math.max(0, selectedObjectIndex - 1));
   };
 
-  const handleAIEdit = async (textPrompt) => {
-    if (!canvasRef.current || !textPrompt.trim()) return;
-
-    setIsAIProcessing(true);
-    
-    try {
-      const prompt_lower = textPrompt.toLowerCase();
-      if ((prompt_lower.includes('match') || prompt_lower.includes('blend') || prompt_lower.includes('enhance') || prompt_lower.includes('improve')) && 
-          (prompt_lower.includes('background') || prompt_lower.includes('lighting'))) {
-        if (editorState.customBackground) {
-          await enhanceWithBackground(editorState.customBackground);
-          return;
-        } else {
-          alert('Please add a custom background first to use lighting enhancement.');
-          setIsAIProcessing(false);
-          return;
-        }
-      }      
-      try {
-        const smartResult = await inpaintingAPI.qwenSmartEdit(canvasRef.current, textPrompt);
-        
-        if (smartResult?.success && smartResult?.result_image) {
-          await applyAIResult(smartResult.result_image);
-          return;
-        }
-      } catch (smartError) {
-        console.log('Smart edit failed, trying individual functions:', smartError);
-      }
-
-      let result = null;
-      
-      try {
-        if (prompt_lower.includes('background') || prompt_lower.includes('scene') || prompt_lower.includes('environment')) {
-          result = await inpaintingAPI.qwenWhiteToScene(canvasRef.current, textPrompt);
-        } else if (prompt_lower.includes('light') || prompt_lower.includes('lighting') || prompt_lower.includes('shadow')) {
-          result = await inpaintingAPI.qwenRelight(canvasRef.current, textPrompt);
-        } else {
-          result = await inpaintingAPI.qwenFusion(canvasRef.current, textPrompt);
-        }
-        
-        if (result?.success && result?.result_image) {
-          await applyAIResult(result.result_image);
-          return;
-        }
-      } catch (directError) {
-        console.log('Direct approach failed, trying comprehensive processing:', directError);
-      }
-
-      try {
-        let fallbackResult = null;        
-        try {
-          fallbackResult = await inpaintingAPI.qwenRelight(canvasRef.current, textPrompt);
-        } catch (e) {
-          console.log('Relight failed, trying fusion:', e);
-          try {
-            fallbackResult = await inpaintingAPI.qwenFusion(canvasRef.current, textPrompt);
-          } catch (e2) {
-            console.log('Fusion failed, trying scene:', e2);
-            fallbackResult = await inpaintingAPI.qwenWhiteToScene(canvasRef.current, textPrompt);
-          }
-        }
-        
-        if (fallbackResult?.success && fallbackResult?.result_image) {
-          await applyAIResult(fallbackResult.result_image);
-          return;
-        }
-      } catch (fallbackError) {
-        console.error('All AI editing strategies failed:', fallbackError);
-      }
-      
-      alert(`AI editing failed. Please try:\n• A more specific prompt\n• Different wording\n• Check internet connection\n\nExample: "Add golden hour lighting" or "Change background to forest"`);
-      setAiTask(null);
-    } catch (error) {
-      console.error('AI editing failed:', error);
-      alert(`AI editing failed: ${error.message}`);
-      setAiTask(null);
-    } finally {
-      setIsAIProcessing(false);
-    }
-  };
-
-  const applyAIResult = async (resultImageUrl) => {
-    const resultImg = new Image();
-    resultImg.crossOrigin = 'anonymous';
-    
-    resultImg.onload = () => {
-      const newObject = {
-        ...currentObject,
-        image: resultImg,
-        name: `${currentObject.name}_ai_edited`,
-        width: resultImg.width,
-        height: resultImg.height
-      };
-
-      execute(new Command(
-        (s) => {
-          const newObjects = [...s.editedObjects];
-          newObjects[selectedObjectIndex] = newObject;
-          return { ...s, editedObjects: newObjects };
-        },
-        (s) => ({ ...s })
-      ));
-    };
-
-    resultImg.onerror = () => {
-      throw new Error('Failed to load AI result image');
-    };
-
-    resultImg.src = resultImageUrl;
-  };
-
   const duplicateObject = () => {
+    const nextId = editorState.editedObjects.reduce((m, o) => Math.max(m, o.id || 0), 0) + 1;
     const duplicate = {
       ...currentObject,
-      id: editorState.editedObjects.length + 1,
+      id: nextId,
       name: `${currentObject.name} (Copy)`
     };
     execute(new Command(
       (s) => ({ ...s, editedObjects: [...s.editedObjects, duplicate] }),
       (s) => ({ ...s })
     ));
-  };
-
-  const applyAllChanges = () => {
-    const tempCanvas = document.createElement('canvas');
-    const currentObj = editorState.editedObjects[selectedObjectIndex];
-    
-    tempCanvas.width = currentObj.image.width;
-    tempCanvas.height = currentObj.image.height;
-    const tempCtx = tempCanvas.getContext('2d', { alpha: true, willReadFrequently: true });
-    
-    tempCtx.imageSmoothingEnabled = true;
-    tempCtx.imageSmoothingQuality = 'high';
-    
-    tempCtx.save();
-    tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
-    
-    if (editorState.flipH) tempCtx.scale(-1, 1);
-    if (editorState.flipV) tempCtx.scale(1, -1);
-    
-    tempCtx.rotate((editorState.rotation * Math.PI) / 180);
-    tempCtx.translate(-(tempCanvas.width / 2), -(tempCanvas.height / 2));
-    
-    let filterString = `brightness(${editorState.brightness}%) contrast(${editorState.contrast}%) saturate(${editorState.saturation}%) blur(${editorState.blur}px) hue-rotate(${editorState.hue}deg)`;
-    if (editorState.sharpen > 0) {
-      filterString += ` contrast(${100 + editorState.sharpen}%)`;
-    }
-    tempCtx.filter = filterString;
-    tempCtx.globalAlpha = editorState.opacity / 100;
-    
-    tempCtx.drawImage(currentObj.image, 0, 0, tempCanvas.width, tempCanvas.height);
-    tempCtx.restore();
-    
-    if (loadedLUT) {
-      const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-      const lutAppliedData = applyLUT(imageData, loadedLUT);
-      tempCtx.putImageData(lutAppliedData, 0, 0);
-    }    
-    const newImage = new Image();
-    newImage.onload = () => {
-      const finalObject = {
-        ...currentObj,
-        image: newImage,
-        originalCanvasX: currentObj.originalCanvasX,
-        originalCanvasY: currentObj.originalCanvasY,
-        originalCanvasWidth: currentObj.originalCanvasWidth,
-        originalCanvasHeight: currentObj.originalCanvasHeight,
-        normalizedX: currentObj.normalizedX,
-        normalizedY: currentObj.normalizedY,
-        normalizedWidth: currentObj.normalizedWidth,
-        normalizedHeight: currentObj.normalizedHeight,
-        displayScaleFactor: currentObj.displayScaleFactor,
-      };      
-      const finalEditedObjects = [...editorState.editedObjects];
-      finalEditedObjects[selectedObjectIndex] = finalObject;            
-      onSave?.(finalEditedObjects);
-      setShowEditor(false);
-    };
-    newImage.src = tempCanvas.toDataURL('image/png', 1.0);
   };
 
   const saveAndExit = async () => {
@@ -578,32 +356,34 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
       
       tempCtx.imageSmoothingEnabled = true;
       tempCtx.imageSmoothingQuality = 'high';
-      
+      let segSource = currentObj.image;
+      if (loadedLUT) {
+        const lc = document.createElement('canvas');
+        lc.width = currentObj.image.width;
+        lc.height = currentObj.image.height;
+        const lctx = lc.getContext('2d', { willReadFrequently: true });
+        lctx.drawImage(currentObj.image, 0, 0);
+        const data = lctx.getImageData(0, 0, lc.width, lc.height);
+        lctx.putImageData(applyLUT(data, loadedLUT), 0, 0);
+        segSource = lc;
+      }
+
       tempCtx.save();
       tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
-      
       if (editorState.flipH) tempCtx.scale(-1, 1);
       if (editorState.flipV) tempCtx.scale(1, -1);
-      
       tempCtx.rotate((editorState.rotation * Math.PI) / 180);
       tempCtx.translate(-(tempCanvas.width / 2), -(tempCanvas.height / 2));
-      
+
       let filterString = `brightness(${editorState.brightness}%) contrast(${editorState.contrast}%) saturate(${editorState.saturation}%) blur(${editorState.blur}px) hue-rotate(${editorState.hue}deg)`;
       if (editorState.sharpen > 0) {
         filterString += ` contrast(${100 + editorState.sharpen}%)`;
       }
       tempCtx.filter = filterString;
       tempCtx.globalAlpha = editorState.opacity / 100;
-      
-      tempCtx.drawImage(currentObj.image, 0, 0, tempCanvas.width, tempCanvas.height);
+      tempCtx.drawImage(segSource, 0, 0, tempCanvas.width, tempCanvas.height);
       tempCtx.restore();
-      
-      if (loadedLUT) {
-        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-        const lutAppliedData = applyLUT(imageData, loadedLUT);
-        tempCtx.putImageData(lutAppliedData, 0, 0);
-      }
-      
+
       const imageBase64 = tempCanvas.toDataURL('image/png', 1.0);
       
       const finalEditedObjects = [...editorState.editedObjects];
@@ -635,369 +415,254 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave })
     }
   };
 
+  const hasBackground = !!(editorState.backgroundColor || editorState.customBackground);
+
+  const canvasMetrics = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const scale = Math.min(rect.width / canvas.width, rect.height / canvas.height);
+    return {
+      rect,
+      scale,
+      padX: (rect.width - canvas.width * scale) / 2,
+      padY: (rect.height - canvas.height * scale) / 2,
+    };
+  };
+  const sampleSegmentAlpha = (natX, natY) => {
+    const img = currentObject?.image;
+    if (!img) return 0;
+    let cache = hitCanvasRef.current;
+    if (cache.img !== img) {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth || img.width;
+      c.height = img.naturalHeight || img.height;
+      const cx = c.getContext('2d', { willReadFrequently: true });
+      try {
+        cx.drawImage(img, 0, 0);
+      } catch {
+        return 0;
+      }
+      cache = { img, ctx: cx, w: c.width, h: c.height };
+      hitCanvasRef.current = cache;
+    }
+    if (natX < 0 || natY < 0 || natX >= cache.w || natY >= cache.h) return 0;
+    try {
+      return cache.ctx.getImageData(natX, natY, 1, 1).data[3];
+    } catch {
+      return 0;
+    }
+  };
+
+  const pointerOnSegment = (clientX, clientY) => {
+    const m = canvasMetrics();
+    const canvas = canvasRef.current;
+    const img = currentObject?.image;
+    if (!m || !canvas || !img) return false;
+
+    const bx = (clientX - m.rect.left - m.padX) / m.scale;
+    const by = (clientY - m.rect.top - m.padY) / m.scale;
+    const wx = (bx - offset.x) / zoom;
+    const wy = (by - offset.y) / zoom;
+
+    const fit = Math.min(canvas.width / currentObject.width, canvas.height / currentObject.height) * 0.7;
+    const imgW = currentObject.width * fit * editorState.imageScale;
+    const imgH = currentObject.height * fit * editorState.imageScale;
+    const imgX = (canvas.width - imgW) / 2 + editorState.imagePos.x;
+    const imgY = (canvas.height - imgH) / 2 + editorState.imagePos.y;
+
+    let lx = wx - (imgX + imgW / 2);
+    let ly = wy - (imgY + imgH / 2);
+    if (editorState.flipH) lx = -lx;
+    if (editorState.flipV) ly = -ly;
+    const rad = (-editorState.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const dispX = lx * cos - ly * sin + imgW / 2;
+    const dispY = lx * sin + ly * cos + imgH / 2;
+    if (dispX < 0 || dispY < 0 || dispX > imgW || dispY > imgH) return false;
+
+    const natW = img.naturalWidth || img.width;
+    const natH = img.naturalHeight || img.height;
+    const natX = Math.floor((dispX / imgW) * natW);
+    const natY = Math.floor((dispY / imgH) * natH);
+    return sampleSegmentAlpha(natX, natY) > 16;
+  };
+
+  const handleCanvasDown = (clientX, clientY) => {
+    dragModeRef.current = pointerOnSegment(clientX, clientY) ? 'segment' : 'background';
+    handlePanStart(clientX, clientY, isDraggingRef, lastDragPosRef);
+  };
+
+  const handleCanvasMove = (clientX, clientY) => {
+    if (!isDraggingRef.current) return;
+    const mode = dragModeRef.current;
+
+    if (mode === 'background' && !hasBackground) {
+      handlePanMove(clientX, clientY, isDraggingRef, lastDragPosRef, setOffset);
+      return;
+    }
+
+    const m = canvasMetrics();
+    const bmpPerScreen = m ? 1 / m.scale : 1;
+    const dx = ((clientX - lastDragPosRef.current.x) * bmpPerScreen) / zoom;
+    const dy = ((clientY - lastDragPosRef.current.y) * bmpPerScreen) / zoom;
+    lastDragPosRef.current = { x: clientX, y: clientY };
+
+    const key = mode === 'segment' ? 'imagePos' : 'backgroundPos';
+    execute(
+      new Command(
+        (s) => ({ ...s, [key]: { x: Math.round(s[key].x + dx), y: Math.round(s[key].y + dy) } }),
+        (s) => ({ ...s }),
+      ),
+      true,
+    );
+  };
+
+  const handleCanvasUp = () => handlePanEnd(isDraggingRef);
+
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center md:p-4">
-      {/* AI Processing Loader */}
-      {isAIProcessing && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-900/90 rounded-lg p-8 flex flex-col items-center gap-4">
-            <ClipLoader color="rgba(168,85,247,0.9)" size={50} />
-            <p className="text-white text-sm">Generating...</p>
-          </div>
-        </div>
-      )}
-      <div className="bg-black w-full h-full md:max-w-6xl md:h-[90vh] shadow-2xl border-0 md:border md:border-white/10 flex flex-col">
-        <SegmentHeader 
-          setShowEditor={setShowEditor} 
-          editedObjects={editorState.editedObjects} 
-          setViewMode={setViewMode} 
-          viewMode={viewMode}
-          handleUndo={handleUndo}
-          handleRedo={handleRedo}
-          canUndo={canUndo}
-          canRedo={canRedo}
+    <div className="fixed inset-0 z-50 flex flex-col bg-black">
+      <SegmentHeader
+        setShowEditor={setShowEditor}
+        editedObjects={editorState.editedObjects}
+        setViewMode={setViewMode}
+        viewMode={viewMode}
+        handleUndo={handleUndo}
+        handleRedo={handleRedo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onDone={saveAndExit}
+        isSaving={isSaving}
+      />
+
+      {viewMode === 'gallery' ? (
+        <GalleryView
+          editedObjects={editorState.editedObjects}
+          setSelectedObjectIndex={setSelectedObjectIndex}
+          setViewMode={setViewMode}
+          selectedObjectIndex={selectedObjectIndex}
+          duplicateObject={duplicateObject}
+          deleteObject={deleteObject}
         />
-        <div className="flex-1 overflow-hidden flex flex-col md:flex-row relative">
-          
-          {viewMode === 'gallery' ? (
-            <GalleryView editedObjects={editorState.editedObjects} setSelectedObjectIndex={setSelectedObjectIndex} setViewMode={setViewMode} selectedObjectIndex={selectedObjectIndex} duplicateObject={duplicateObject} deleteObject={deleteObject}/>
-          ) : (
-            <>
-              <div 
-                className="flex-1 p-2 md:p-6 flex items-center justify-center bg-black/20 relative overflow-hidden"
-                onWheel={(e)=>handleWheel(e,setZoom, setOffset, canvasRef)}
-                style={{ touchAction: 'none' }}
-              >
-                <div className="absolute flex gap-2 md:gap-3 top-2 md:top-4 right-2 md:right-4 z-20 bg-black/50 backdrop-blur-md rounded-lg px-2 md:px-3 py-1 md:py-2">
-                  <ZoomIn size={16} className="md:w-5 md:h-5" />
-                  <p className="text-xs md:text-sm">{Math.round(zoom * 100)}%</p>
+      ) : (
+        <div className="relative flex-1 overflow-hidden">
+          <div className="absolute left-4 top-4 z-20 flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-3 py-1.5 text-[12px] text-ink">
+            <ZoomIn size={13} className="text-muted" />
+            <span className="tabular-nums">{Math.round(zoom * 100)}%</span>
+          </div>
+
+          <div
+            className="h-full w-full p-3 pb-28"
+            onWheel={(e) => handleWheel(e, setZoom, setOffset, canvasRef)}
+            style={{ touchAction: 'none' }}
+          >
+            <canvas
+              ref={canvasRef}
+              className="h-full w-full object-contain"
+              style={{ cursor: isDraggingRef.current ? 'grabbing' : 'grab' }}
+              onMouseDown={(e) => handleCanvasDown(e.clientX, e.clientY)}
+              onMouseMove={(e) => handleCanvasMove(e.clientX, e.clientY)}
+              onMouseUp={handleCanvasUp}
+              onMouseLeave={handleCanvasUp}
+              onTouchStart={(e) => {
+                const t = e.touches[0];
+                handleCanvasDown(t.clientX, t.clientY);
+              }}
+              onTouchMove={(e) => {
+                if (e.touches.length === 2) {
+                  handleTouchMovePinch(e, lastDistanceRef, setZoom, setOffset, canvasRef);
+                } else if (e.touches.length === 1) {
+                  const t = e.touches[0];
+                  handleCanvasMove(t.clientX, t.clientY);
+                }
+              }}
+              onTouchEnd={() => {
+                handleTouchEndPinch(lastDistanceRef);
+                handleCanvasUp();
+              }}
+            />
+          </div>
+
+          {activePanel === 'adjust' && (
+            <AdjustBar
+              editorState={editorState}
+              selectedEditOption={selectedEditOption}
+              setSelectedEditOption={setSelectedEditOption}
+              execute={execute}
+              Command={Command}
+              resetFilters={resetFilters}
+              onClose={() => {
+                setActivePanel(null);
+                setSelectedEditOption(null);
+              }}
+            />
+          )}
+
+          {activePanel === 'filters' && (
+            <LUTSlider
+              uploadedImage={currentObject?.image}
+              currentLUT={editorState.selectedLUT}
+              onSelect={(lut) =>
+                execute(
+                  new Command(
+                    (s) => ({ ...s, selectedLUT: lut }),
+                    (s) => ({ ...s, selectedLUT: editorState.selectedLUT }),
+                  ),
+                )
+              }
+              onClose={() => setActivePanel(null)}
+            />
+          )}
+
+          {activePanel === 'background' && (
+            <BackgroundPanel
+              editorState={editorState}
+              execute={execute}
+              backgroundInputRef={backgroundInputRef}
+              handleCustomBackgroundUpload={handleCustomBackgroundUpload}
+              onClose={() => setActivePanel(null)}
+            />
+          )}
+
+          {activePanel === 'command' && (
+            <div className="fixed inset-x-0 bottom-0 z-40 bg-black">
+              <div className="mx-auto max-w-3xl px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-[15px] font-semibold text-ink">AI &amp; commands</h3>
+                  <button
+                    onClick={() => setActivePanel(null)}
+                    aria-label="Close"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface-2 text-muted transition-colors hover:bg-surface-3 hover:text-ink"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
-                
-                <div className="relative w-full h-full flex items-center justify-center">
-                  <canvas
-                    ref={canvasRef}
-                    className="border border-white/20 shadow-2xl"
-                    style={{ 
-                      cursor: isDraggingRef.current ? 'grabbing' : 'grab',
-                      maxWidth: '100%',
-                      maxHeight: '100%',
-                      objectFit: 'contain'
-                    }}
-                    onMouseDown={(e) => {
-                      handlePanStart(e.clientX, e.clientY, isDraggingRef, lastDragPosRef);
-                    }}
-                    onMouseMove={(e) => {
-                      if (isDraggingRef.current) {
-                        handlePanMove(e.clientX, e.clientY, isDraggingRef, lastDragPosRef, setOffset);
-                      }
-                    }}
-                    onMouseUp={(e) => {
-                      handlePanEnd(isDraggingRef);
-                    }}
-                    onMouseLeave={()=>handlePanEnd(isDraggingRef)}
-                    onTouchStart={(e) => {
-                      const t = e.touches[0];
-                      handlePanStart(t.clientX, t.clientY, isDraggingRef,lastDragPosRef);
-                    }}
-                    onTouchMove={(e) => {
-                      if (e.touches.length === 2) {
-                        handleTouchMovePinch(e, lastDistanceRef, setZoom, setOffset, canvasRef);
-                      } else if (e.touches.length === 1) {
-                        const t = e.touches[0];
-                        handlePanMove(t.clientX, t.clientY, isDraggingRef, lastDragPosRef, setOffset);
-                      }
-                    }}
-                    onTouchEnd={(e) => {
-                      handleTouchEndPinch(lastDistanceRef);
-                      handlePanEnd(isDraggingRef);
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Mobile Toolbar Toggle Button - Only visible on mobile */}
-              <button
-                onClick={() => {
-                  setSidebarView('editing');
-                  setIsMobileToolbarOpen(!isMobileToolbarOpen);
-                }}
-                className="md:hidden fixed top-30 right-4 z-30 bg-blue-500 hover:bg-blue-600 p-2 rounded-full shadow-lg transition-all"
-                title="Edit Tools"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  {isMobileToolbarOpen ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  )}
-                </svg>
-              </button>
-
-              {/* Mobile Background Button - Only visible on mobile */}
-              <button
-                onClick={() => {
-                  setSidebarView('background');
-                  setIsMobileToolbarOpen(true);
-                }}
-                className="md:hidden fixed top-43 right-4 z-30 bg-blue-500 hover:bg-blue-600 p-2 rounded-full shadow-lg transition-all"
-                title="Background"
-              >
-                <Palette size={20} />
-              </button>
-
-              {/* Slider - positioned at bottom on mobile, below canvas on desktop */}
-              {selectedEditOption && (
-                <div className="absolute md:relative bottom-0 left-10 right-10 md:bottom-auto z-20 bg-black/95 md:bg-transparent backdrop-blur-md md:backdrop-blur-none p-3 md:p-0">
-                  <EditSlider 
-                    selectedEditOption={selectedEditOption}
-                    editorState={editorState}
-                    execute={execute}
-                    setSelectedEditOption={setSelectedEditOption}/>
-                </div>
-              )}
-
-              {/* Desktop Sidebar - hidden on mobile */}
-              <div className="hidden md:block w-80 border-l border-white/10 overflow-y-auto bg-black/20">
-                <div className="p-4 space-y-4">
-                  
-                  {sidebarView === 'editing' ? (
-                    <>
-                      <QuickActions 
-                        downloadImage={downloadImage} 
-                        resetFilters={resetFilters}
-                      />
-
-                      <EditingOptions setSelectedEditOption={setSelectedEditOption}
-                        selectedEditOption={selectedEditOption}
-                        editorState={editorState}
-                        execute={execute}
-                        onClose={undefined}
-                        setSidebarView={setSidebarView}/>
-
-                      <div className="border-t border-white/10 pt-4">
-                        <p className="text-xs font-semibold text-gray-400 uppercase mb-3">Color Grading</p>
-                        <button
-                          onClick={() => {
-                            setShowLUTSelector(true)
-                          }}
-                          className="w-full px-4 py-3 bg-linear-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg"
-                        >
-                          <Palette size={18} />
-                          <span className="font-medium">
-                            {editorState.selectedLUT ? editorState.selectedLUT.name : 'Select Filter'}
-                          </span>
-                        </button>
-                        {editorState.selectedLUT && (
-                          <p className="text-xs text-gray-400 text-center mt-2">
-                            ✓ Active filter
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="border-t border-white/10 pt-4">
-                        <p className="text-xs font-semibold text-gray-400 uppercase mb-3">Transform</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => {
-                              execute(new Command(
-                                (s) => ({ ...s, flipH: !s.flipH }),
-                                (s) => ({ ...s, flipH: !s.flipH })
-                              ));
-                            }}
-                            className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                              editorState.flipH ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
-                            }`}
-                          >
-                            <FlipHorizontal size={16} />
-                            <span className="text-sm">Flip H</span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              execute(new Command(
-                                (s) => ({ ...s, flipV: !s.flipV }),
-                                (s) => ({ ...s, flipV: !s.flipV })
-                              ));
-                            }}
-                            className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                              editorState.flipV ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
-                            }`}
-                          >
-                            <FlipVertical size={16} />
-                            <span className="text-sm">Flip V</span>
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                      <BackgroundPanel 
-                            setSidebarView={setSidebarView}
-                            canvasSize={canvasSize}
-                            setCanvasSize={setCanvasSize}
-                            editorState={editorState}
-                            execute={execute}
-                            backgroundInputRef={backgroundInputRef}
-                            handleCustomBackgroundUpload={handleCustomBackgroundUpload}
-                            saveImageWithBackground={saveImageWithBackground}
-                      />
-                  )}
-                </div>
-              </div>
-
-              {/* Mobile Sliding Sidebar - only visible on mobile */}
-              <div className={`md:hidden fixed inset-y-0 right-0 w-48 max-w-[85vw] bg-black border-l border-white/10 overflow-y-auto transform transition-transform duration-300 ease-in-out z-40 ${
-                isMobileToolbarOpen ? 'translate-x-0' : 'translate-x-full'
-              }`}>
-                <div className="p-4 space-y-4">
-                  
-                  {sidebarView === 'editing' ? (
-                    <>
-                      <QuickActions 
-                        downloadImage={downloadImage} 
-                        resetFilters={resetFilters}
-                      />
-
-                      <EditingOptions setSelectedEditOption={setSelectedEditOption}
-                        selectedEditOption={selectedEditOption}
-                        editorState={editorState}
-                        execute={execute}
-                        onClose={() => setIsMobileToolbarOpen(false)}
-                        setSidebarView={setSidebarView}/>
-
-                      <div className="border-t border-white/10 pt-4">
-                        <p className="text-xs font-semibold text-gray-400 uppercase mb-3">Color Grading</p>
-                        <button
-                          onClick={() => {
-                            setShowLUTSelector(true)
-                            setIsMobileToolbarOpen(false)
-                          }}
-                          className="w-full px-4 py-3 bg-linear-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg"
-                        >
-                          <Palette size={18} />
-                          <span className="font-medium text-xs">
-                            {editorState.selectedLUT ? editorState.selectedLUT.name : 'Select Filter'}
-                          </span>
-                        </button>
-                        {editorState.selectedLUT && (
-                          <p className="text-xs text-gray-400 text-center mt-2">
-                            ✓ Active filter
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="border-t border-white/10 pt-4">
-                        <p className="text-xs font-semibold text-gray-400 uppercase mb-3">Transform</p>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => {
-                              execute(new Command(
-                                (s) => ({ ...s, flipH: !s.flipH }),
-                                (s) => ({ ...s, flipH: !s.flipH })
-                              ));
-                              setIsMobileToolbarOpen(false);
-                            }}
-                            className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                              editorState.flipH ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
-                            }`}
-                          >
-                            <FlipHorizontal size={16} />
-                            <span className="text-sm">Flip H</span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              execute(new Command(
-                                (s) => ({ ...s, flipV: !s.flipV }),
-                                (s) => ({ ...s, flipV: !s.flipV })
-                              ));
-                              setIsMobileToolbarOpen(false);
-                            }}
-                            className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all ${
-                              editorState.flipV ? 'bg-blue-500' : 'bg-white/5 hover:bg-white/10'
-                            }`}
-                          >
-                            <FlipVertical size={16} />
-                            <span className="text-sm">Flip V</span>
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                      <BackgroundPanel 
-                            setSidebarView={setSidebarView}
-                            canvasSize={canvasSize}
-                            setCanvasSize={setCanvasSize}
-                            editorState={editorState}
-                            execute={execute}
-                            backgroundInputRef={backgroundInputRef}
-                            handleCustomBackgroundUpload={handleCustomBackgroundUpload}
-                            saveImageWithBackground={saveImageWithBackground}
-                            onClose={() => setIsMobileToolbarOpen(false)}
-                      />
-                  )}
-                </div>
-              </div>
-
-              {/* Mobile Sidebar Backdrop */}
-              {isMobileToolbarOpen && (
-                <div 
-                  className="md:hidden fixed inset-0 bg-black/50 z-30"
-                  onClick={() => setIsMobileToolbarOpen(false)}
+                <CommandInput
+                  selectedObject={currentObject}
+                  execute={execute}
+                  editorState={editorState}
+                  Command={Command}
+                  addToast={addToast}
                 />
-              )}
-            </>
+              </div>
+            </div>
+          )}
+
+          {!activePanel && (
+            <div className="fixed inset-x-0 bottom-0 z-30 bg-black sm:pointer-events-none sm:bg-transparent">
+              <div className="pointer-events-auto mx-auto flex max-w-3xl items-center justify-around gap-1 px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:mb-6 sm:w-fit sm:max-w-none sm:justify-center sm:gap-2 sm:rounded-3xl sm:border sm:border-line sm:bg-surface/95 sm:px-4 sm:py-2.5 sm:shadow-pop sm:backdrop-blur">
+                <ToolButton icon={SlidersHorizontal} label="Adjust" onClick={() => setActivePanel('adjust')} />
+                <ToolButton icon={Palette} label="Filters" onClick={() => setActivePanel('filters')} />
+                <ToolButton icon={ImageIcon} label="Background" onClick={() => setActivePanel('background')} />
+                <ToolButton icon={Sparkles} label="AI" onClick={() => setActivePanel('command')} />
+                <ToolButton icon={Save} label="Save" onClick={saveToLibrary} />
+                <ToolButton icon={Download} label="Download" onClick={downloadImage} />
+              </div>
+            </div>
           )}
         </div>
-
-        {/* Apply and Save Buttons - Bottom Right */}
-        <div className="absolute bottom-70 right-4 z-10 flex gap-2">
-          <button
-            onClick={saveAndExit}
-            disabled={isSaving}
-            className="px-4 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-500 disabled:cursor-not-allowed rounded-lg font-medium text-sm transition-all flex items-center gap-2 shadow-lg"
-          >
-            {isSaving ? (
-              <>
-                <div className="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save size={14} />
-                Save & Exit
-              </>
-            )}
-          </button>
-          <button
-            onClick={applyAllChanges}
-            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded-lg font-medium text-sm transition-all flex items-center gap-2 shadow-lg"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20,6 9,17 4,12"></polyline>
-            </svg>
-            Apply
-          </button>
-        </div>
-        
-        <SegmentFooter 
-          execute={execute}
-          editorState={editorState}
-          Command={Command}
-          onAIEdit={handleAIEdit}
-          isAIProcessing={isAIProcessing}
-        />
-      </div>
-      
-      {/* LUT Filter Selector */}
-      {showLUTSelector && (
-        <LUTSlider 
-          onSelect={(lut) => {
-            execute(new Command(
-              (s) => ({ ...s, selectedLUT: lut }),
-              (s) => ({ ...s, selectedLUT: editorState.selectedLUT })
-            ));
-          }}
-          currentLUT={editorState.selectedLUT}
-          onClose={() => setShowLUTSelector(false)}
-        />
       )}
     </div>
   );
