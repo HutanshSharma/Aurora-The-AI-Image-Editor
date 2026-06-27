@@ -133,7 +133,7 @@ to keep payloads small.
 
 ---
 
-## 6. Summary
+## 5. Summary
 
 - JWT auth with typed tokens (access/refresh/reset/verify), bcrypt passwords,
   and a single‑flight refresh shared by `authFetch` and `UserContext`.
