@@ -18,7 +18,7 @@ export default function BeforeAfter() {
   return (
     <div
       ref={ref}
-      className="group relative aspect-[4/3] w-full cursor-ew-resize touch-none select-none overflow-hidden rounded-[1.75rem] border border-white/10 bg-surface-2 shadow-2xl sm:aspect-[16/10]"
+      className="group relative aspect-4/3 w-full cursor-ew-resize touch-none select-none overflow-hidden rounded-3xl border border-white/10 bg-surface-2 shadow-2xl sm:aspect-16/10"
       onPointerDown={(e) => {
         dragging.current = true;
         e.currentTarget.setPointerCapture(e.pointerId);

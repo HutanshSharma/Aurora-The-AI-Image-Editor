@@ -34,7 +34,7 @@ export default function EditorPreview() {
     >
       <div className="absolute -inset-6 -z-10 rounded-[3rem] bg-accent/20 blur-3xl" />
 
-      <div className="overflow-hidden rounded-[1.75rem] border border-white/10 bg-surface-2/80 shadow-2xl backdrop-blur-xl">
+      <div className="overflow-hidden rounded-3xl border border-white/10 bg-surface-2/80 shadow-2xl backdrop-blur-xl">
 
         <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
           <div className="flex items-center gap-2">
@@ -50,7 +50,7 @@ export default function EditorPreview() {
           </span>
         </div>
 
-        <div className="relative aspect-[4/3] bg-surface-3">
+        <div className="relative aspect-4/3 bg-surface-3">
           <img src={HERO} alt="Aurora editor preview" draggable={false} className="absolute inset-0 h-full w-full object-cover" />
         </div>
 

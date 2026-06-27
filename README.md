@@ -1,233 +1,186 @@
-# Team 39 Image Editor
+# Aurora — The AI Image Editor
 
-An advanced image editing application with 2 AI powered features, non linear history management, and real time segmentation.
+Aurora is a browser‑based, mobile‑first image editor that pairs a fast,
+non‑destructive Canvas pipeline with a stack of AI features — local object
+segmentation, three in‑browser colour‑grading neural nets, natural‑language
+editing, and voice control — on top of a tree‑based, never‑lose‑your‑work history
+system.
+
+- **Frontend:** React 19 + Vite 7 + Tailwind v4
+- **Backend:** FastAPI (Python), SQLite via SQLAlchemy
+- **AI:** MobileSAM (local) · NeurOp / Deep‑WB / Image‑Adaptive 3D LUT (in‑browser
+  ONNX) · Qwen‑Image‑Edit‑2509 (remote) · Whisper Tiny (in‑browser)
+
+---
 
 ## Features
 
-### Core Editing
-- **Adjustments**: Brightness, contrast, saturation, blur, sharpen, hue, opacity
-- **Transformations**: Rotation, horizontal/vertical flip
-- **LUT Filters**: 35 professional color grading presets
-- **AI Segmentation**: Automatic object detection, segmentation with feature to combine various segments
-- **Background Replacement**: Custom backgrounds with AI generated scenes and relighting 
+### Core editing
+- **Adjustments:** brightness, contrast, saturation, blur, sharpen, hue, opacity
+- **Transforms:** rotation, horizontal/vertical flip, crop
+- **35 cinematic LUTs** (`.CUBE`, trilinear‑interpolated)
+- **WYSIWYG export** at full native resolution — no letterbox, no watermark,
+  optional transparent background
 
-### Advanced History System
-- **Non Linear Tree Based History**: Explore multiple edit paths from any point
-- **Branching**: Create and compare alternative editing approaches
-- **Time Travel**: Jump to any historical state instantly
-- **Visual Preview**: Thumbnail view of all edits with applied filters
-- **AI Optimization**: Neural network powered edit suggestions (NeurOP)
-- **Smart Branching**: Automatic deduplication and state coalescing
+### AI features
+- **Object segmentation** — tap any object (MobileSAM), edit it in isolation,
+  lasso‑erase parts, then auto‑blend it back or drop it on a new background
+- **AI colour grade** — content‑aware grading from an Image‑Adaptive 3D LUT
+- **AI optimize** — predictive tone (NeurOp) + auto white‑balance (Deep‑WB) as a
+  new history branch
+- **Natural‑language editing** — *"relight as golden hour"*, *"put this on a
+  beach"* via remote Qwen‑Image‑Edit‑2509 (gated, degrades gracefully)
+- **Voice control** — speak commands; hybrid native Web Speech + in‑browser
+  Whisper
 
-### Canvas Editing System
-- **Real time Filters**: Hardware accelerated CSS filters for instant preview
-- **LUT Color Grading**: 35+ professional cinema style color presets
-- **Smart Caching**: Optimized rendering pipeline with result caching
-- **Segment Overlays**: Non destructive segment editing with automatic re segmentation
-- **AI Enhancement**: Qwen powered lighting matching and background scene generation
-- **WaterMark**: WaterMarks are added to the images downloaded from the app
+### History
+- **Tree‑based** (not linear) undo/redo — every branch preserved
+- **Time travel** — jump to any state from a thumbnail grid
+- **Smart debouncing** so slider drags collapse to a single step
 
-### Voice Input System
-- **Web Speech API**: Browser native voice to text conversion (~100ms latency)
-- **Natural Commands**: "Increase brightness", "Apply warm filter", "Flip horizontal"
-- **Real time Feedback**: Audio level visualization during recording
-- **Zero Setup**: No ML model downloads required (instant availability)
-- **Smart Fallback**: Text input always available for all browsers
+### Accounts & library
+- **JWT auth** with email verification and password reset
+- **Personal image library** — save finished edits to a per‑user gallery,
+  with thumbnails, rename and delete
 
-## AI Feature 1 : Segmentation & Inpainting Pipeline
-
-> **Status note:** Local segmentation (MobileSAM) is fully working. The **cloud-based Qwen image editing** (white-to-scene, fusion, relight) is **currently disabled** — the HuggingFace Space it relied on is no longer active, so those endpoints return a "feature disabled" response. The manual editing, segmentation, color grading, and history features all work without it.
-
-### How It Works
-
-The pipeline combines local segmentation with cloud based image editing to handle complex image manipulation tasks.
-
-### Image Upload & Segmentation
-
-When you upload an image, it goes straight to *MobileSAM* for segmentation. The model uses a Vision Transformer (ViT) backbone to extract image features. You can refine the mask by tapping and holding on your screen to add points. All of this runs on the local backend server—no heavy GPU needed here.
-
-### Cloud Based Image Editing
-
-The actual image generation happens on HuggingFace Spaces (Note: HuggingFace spaces are paid), where we're running *Qwen Image Edit 2509* with three specialized LoRAs:
-
-- *White to Scene*: Generates realistic backgrounds for product images
-- *Fusion*: Blends cutouts or rough pastes seamlessly into scenes
-- *Relight*: Changes lighting, theme, and overall mood
-
-### Processing Flow
-
-Every edit exports the entire canvas as an image (PNG/JPG) and sends it to the model. Simple as that—no incremental updates, just full canvas snapshots per request.
-
-### Architecture Summary
-
-User Image → MobileSAM (local) → Mask Selection → Canvas Export → Qwen Model (HF Space) → Result
-
-# Qwen Image Editing Models
-
-Below are the three Qwen-based image editing models along with their Hugging Face links and example output GIFs embedded for visibility.
+> **Status note:** all local features (editing, segmentation, colour grading,
+> voice, history) work out of the box. The **remote Qwen editing** is gated on an
+> `HF_TOKEN` and a live HuggingFace Space; if the Space is down it simply reports
+> "unavailable" and the rest of the app is unaffected.
 
 ---
 
-## **1. Qwen White to Scene**
+## Documentation
 
-**Model Link:** [https://huggingface.co/dx8152/Qwen-Image-Edit-2509-White_to_Scene](https://huggingface.co/dx8152/Qwen-Image-Edit-2509-White_to_Scene)
+Full technical docs live in [`documentation/`](./documentation):
 
-**Output Example:**
-![White to Scene](https://cdn-uploads.huggingface.co/production/uploads/64461e86ab86b035add67e41/8nACWMY75EhR_LRAplWsn.gif)
-
----
-
-## **2. Qwen Fusion**
-
-**Model Link:** [https://huggingface.co/dx8152/Qwen-Image-Edit-2509-Fusion](https://huggingface.co/dx8152/Qwen-Image-Edit-2509-Fusion)
-
-**Output Example:**
-![Fusion](https://cdn-uploads.huggingface.co/production/uploads/64461e86ab86b035add67e41/f7NFToLOA9kQ3ChzOyGpn.gif)
-
----
-
-## **3. Qwen Relight**
-
-**Model Link:** [https://huggingface.co/dx8152/Qwen-Image-Edit-2509-Relight](https://huggingface.co/dx8152/Qwen-Image-Edit-2509-Relight)
-
-**Output Example:**
-![Relight](https://cdn-uploads.huggingface.co/production/uploads/64461e86ab86b035add67e41/JC3gLrq8rPr-5CIerXF6t.gif)
+| Topic | Doc |
+|-------|-----|
+| Canvas rendering pipeline | [01 – Canvas Rendering](./documentation/01-canvas-rendering.md) |
+| Basic edits & the LUT engine | [02 – Edits & LUTs](./documentation/02-edits-and-luts.md) |
+| Tree‑based history / undo‑redo | [03 – History](./documentation/03-history.md) |
+| Segmentation, erase & merge | [04 – Segmentation](./documentation/04-segmentation.md) |
+| AI colour grading (3 ONNX models) | [05 – Colour Grading](./documentation/05-color-grading.md) |
+| Qwen natural‑language editing | [06 – Qwen AI Editing](./documentation/06-qwen-inpainting.md) |
+| Voice input & command parser | [07 – Voice & Commands](./documentation/07-voice-and-commands.md) |
+| Accounts & image library | [08 – Accounts & Library](./documentation/08-accounts-and-library.md) |
 
 ---
 
-The split between local segmentation and remote generation keeps things fast while still leveraging powerful GPU infrastructure where it matters.
+## Tech stack
 
-## AI Feature 2 : Predictive Color Assist Pipeline
+**Frontend**
+- React 19, Vite 7, React Router v7
+- Tailwind CSS v4
+- Canvas 2D API (rendering, LUTs, compositing)
+- `onnxruntime-web` (in‑browser ONNX inference, in a Web Worker)
+- `@xenova/transformers` (Whisper, loaded from CDN at runtime)
+- framer‑motion / GSAP / Three.js (landing page & UI)
 
-### 1. Predictive Color Assist
-
-Predictive Color Assist feature **learns a user’s editing history** and suggests **intent aware color adjustments** based on **past edits**. The system generates an **optimized future image** to help refine edits, allowing users to **fine tune their images** while maintaining **creative control**.
-
----
-
-### 2. Need of this Feature
-
-- While **AI auto enhance tools** exist, they are often **too generic** and lack the ability to provide personalized results. On the other hand, **manual controls** for **color** and **tone adjustments** are time consuming and challenging for users to balance with speed.
-
----
-
-### 3. Architecture Summary 
-
-START → [User edits photo] → [Select past edit (i)] → [Rebuild image + low-res copy]
-  →
-[Compute deltas + generate candidates] → [Run NeurOP + apply LUT] → [Calculate Score]
-  →
-[Select best candidate] → [Apply to full-res image] → [Show AI-optimized result]
-  →
-User decision: Accept → Save to history | Reject → Keep original
-END
+**Backend**
+- FastAPI + Uvicorn
+- SQLAlchemy (async) over SQLite (`aurora.db`, auto‑created)
+- MobileSAM (PyTorch) for segmentation
+- `gradio_client` proxy to a HuggingFace Space (Qwen editing)
+- Pillow / NumPy / OpenCV for image handling
+- JWT auth (`python-jose`, `passlib`), `fastapi-mail` for verify/reset emails
 
 ---
 
-![color grading image](./public/color-grading.png)
+## Models used
 
+| Model | Runs | Purpose | Params / config | Repo |
+|-------|------|---------|------------------|------|
+| **MobileSAM** (`vit_t`) | Backend (local) | Object segmentation | Tiny‑ViT encoder; point‑grid prompts | [ChaoningZhang/MobileSAM](https://github.com/ChaoningZhang/MobileSAM) |
+| **NeurOp** | Browser (ONNX) | Predictive tone ("AI optimize") | `neurop_lite.onnx` ~143 KB, `[1,3,256,256]` | [amberwangyili/neurop](https://github.com/amberwangyili/neurop) |
+| **Deep White‑Balance** | Browser (ONNX) | Auto white balance | `deepwb_awb.onnx` ~17.5 MB, `[1,3,256,256]` → 33³ LUT | [mahmoudnafifi/Deep_White_Balance](https://github.com/mahmoudnafifi/Deep_White_Balance) |
+| **Image‑Adaptive 3D LUT** | Browser (ONNX) | "AI color grade" | classifier 1.08 MB + basis 1.29 MB → fused 33³ LUT | [HuiZeng/Image-Adaptive-3DLUT](https://github.com/HuiZeng/Image-Adaptive-3DLUT) |
+| **Qwen‑Image‑Edit‑2509** + LoRAs | Remote HF Space | Natural‑language editing | `steps=4`, `guidance=1.0`; Space `team39/qwen-relight-2509` | [Qwen-Image-Edit-2509](https://huggingface.co/Qwen/Qwen-Image-Edit-2509) |
+| **Whisper Tiny (EN)** | Browser (transformers.js) | Voice → text | `Xenova/whisper-tiny.en`, 16 kHz PCM | [Xenova/whisper-tiny.en](https://huggingface.co/Xenova/whisper-tiny.en) |
 
-## Detailed Documentation: 
+---
 
-> - [History_system.md](./History_system.md) - Complete history architecture
-> - [Canvas_editing_system.md](./Canvas_editing_system.md) - Canvas filters, LUT application, and segment merging
-> - [voice_input.md](./voice_input.md) - Voice to text conversion
-> - [predictive.md](./predictive.md) - Predictive Color Assist
+## Setup
 
+### Prerequisites
+- **Node.js** 18+ and **npm**
+- **Python** 3.10+
+- A CUDA GPU is **optional** (MobileSAM runs on CPU if none is present)
+
+### 1. Backend
+
+```bash
+python -m venv env
+env\Scripts\activate.bat        # Windows  (use: source env/bin/activate on macOS/Linux)
+pip install -r requirements.txt
+uvicorn backend.main:app        # serves on http://127.0.0.1:8000
+```
+
+### 2. Frontend
+
+```bash
+npm install
+npm run dev                      # serves on http://localhost:3000
+```
+
+### 3. Environment
+
+Copy `.env.example` to `.env` and fill in:
+
+| Variable | Purpose | Required |
+|----------|---------|----------|
+| `SECRET_KEY` | JWT signing for the backend | ✅ |
+| `USERMAIL` / `PASSWORD` | SMTP account (email app password) for verify/reset mails | ✅ |
+| `FRONTEND_URL` | Base URL used in email links (default `http://localhost:3000`) | ✅ |
+| `HF_TOKEN` | HuggingFace token to enable remote **Qwen** editing | optional |
+| `HF_SPACE` | Override the target Space (default `team39/qwen-relight-2509`) | optional |
+| `DATABASE_URL` | Use a different async SQLAlchemy DB (default = local SQLite) | optional |
+
+The database is a local SQLite file (`aurora.db`), created automatically on first
+run — no DB server needed.
+
+---
 
 ## Usage
 
-1. **Upload Image**: Click to upload or drag and drop
-2. **Edit**: Use sliders and tools to adjust image properties
-3. **Segment**: Click "Segment" to detect objects (automatic on image load)
-4. **History**: Click history button to explore edit branches
-5. **Save**: Save final result to your gallery
-6. **Download**: Download the final edited image
+1. **Upload** an image (the editor lives at `/editor`; the landing page is `/`).
+2. **Edit** with sliders, LUTs, crop, and transforms — or type/speak a command.
+3. **Segment** — tap an object to pull it out; edit, erase, and re‑blend it.
+4. **AI** — "AI color grade", "AI optimize" (History), or a natural‑language
+   command for Qwen editing.
+5. **History** — open the history view to branch, compare, and time‑travel.
+6. **Download / Save** — full‑resolution, clean export (optionally transparent).
 
-## Technology Stack
+---
 
-**Frontend:**
-- React + Vite
-- TailwindCSS
-- GSAP
-- Three.js
-- Canvas API for image processing
-- ONNX Runtime for on device ML inference
-
-**Backend:**
-- FastAPI (Python)
-- Qwen AI Models (inpainting, lighting)
-- MobileSAM (segmentation)
-- SQLite via SQLAlchemy (user accounts and image metadata)
-- PIL for image manipulation
-
-## Repository Structure
+## Repository structure
 
 ```
-├── Demo Video/
-│   └── Demo Video.mp4
-│
-├── Design Rationale/
-│   └── Design_Rationale__Team_39.pdf
-│
-├── Figma Mock-ups/
-│   ├── Adobe Re-Imagining Photoshop.pdf
-│   ├── Adobe Re-Imagining Photoshop@2x.pdf
-│   └──  Adobe Re-Imagining Photoshop@3x.pdf
-│ 
-├──  Market Research/
-│   └── Market_Research.pdf  
-│
-├── backend/               # FastAPI backend application
-│
-├── public/               
-│   ├── luts/
-│   ├── model/
-│   └── images/
-│
-└── src/                   # Frontend source code (React etc.)
+Aurora-The-AI-Image-Editor/
+├── backend/                     # FastAPI app
+│   ├── main.py                  # app + routers
+│   ├── Routers/                 # auth, user, segmentation, inpainting
+│   └── segmentation_inpainting/ # MobileSAM + HF Qwen client
+├── documentation/               # technical docs (start at README.md)
+├── public/
+│   ├── luts/                    # 35 .CUBE presets
+│   └── models/                  # ONNX weights + LUT basis
+├── src/
+│   ├── components/
+│   │   ├── MainEditor/          # canvas, command input, history, menus
+│   │   ├── SegmentEditor/       # segment editing, eraser, backgrounds
+│   │   ├── ColorGradingUtils/   # client-side ONNX colour models
+│   │   ├── Landing/             # landing page
+│   │   └── Auth/                # login / signup
+│   ├── hooks/useHistory.jsx     # history tree engine
+│   └── utils/                   # historyParser, authFetch, config
+├── requirements.txt
+├── vite.config.js
+└── package.json
 ```
 
-## History System Overview
-
-The editor uses a **tree based history structure** (not linear undo/redo). Key benefits:
-
-- **No Lost Work**: All edit branches preserved indefinitely
-- **Compare Options**: View multiple editing approaches side by side
-- **AI Assistance**: Get ML powered optimization suggestions at branch points
-- **Visual Navigation**: Thumbnail grid shows complete edit history
-- **Performance**: Smart debouncing prevents history pollution from slider movements
-
-**Example Tree Structure:**
-```
-Initial State
-  ├─→ Brightness +20
-  │     ├─→ Contrast +10 → Saturation -20
-  │     └─→ [Branch A] Blur +5 → Rotation 90°
-  └─→ [Branch B] LUT: Arabica → Hue +45°
-```
-
-Each node stores complete state, enabling instant jumps to any historical configuration.
-
-## Installation
-
-### Backend
-```bash
-python -m venv env
-env\Scripts\activate.bat
-pip install -r requirements.txt
-uvicorn backend.main:app
-```
-
-### Frontend
-```bash
-npm install
-npm run dev
-```
-
-### Setting up env
-The env has USERMAIL and PASSWORD (for the reset/verify emails), SECRET_KEY (for the fastapi backend JWTs), and optionally HF_TOKEN (for the qwen model). The database is a local SQLite file (`aurora.db`) created automatically on first run — no database server or connection string needed. Set DATABASE_URL only if you want a different async SQLAlchemy database.
+---
 
 ## License
 
-MIT
+MIT — see [LICENSE](./LICENSE).
