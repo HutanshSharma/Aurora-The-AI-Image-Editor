@@ -133,14 +133,6 @@ to keep payloads small.
 
 ---
 
-## 5. Models used
-
-**None.** Accounts and the library are conventional web‑app infrastructure
-(JWT auth + file storage + SQLite). They exist to *host* the AI editor's output,
-not to perform any inference.
-
----
-
 ## 6. Summary
 
 - JWT auth with typed tokens (access/refresh/reset/verify), bcrypt passwords,
