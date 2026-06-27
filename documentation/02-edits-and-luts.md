@@ -165,16 +165,8 @@ the per‑pixel loop avoids re‑reading nested arrays.
 
 ---
 
-## 5. Models used
 
-**None for basic edits or `.CUBE` LUTs** — this is all CSS filters + Canvas 2D
-maths. The *adaptive* LUTs are produced by client‑side ONNX models documented in
-**[05 – AI Colour Grading](./05-color-grading.md)**; they merely reuse the
-`applyLUT` engine described here to render.
-
----
-
-## 6. Summary
+## 5. Summary
 
 - Every edit is a `Command(do, undo)` that updates `editorState`; the Canvas
   renders from state, so editing stays non‑destructive.
