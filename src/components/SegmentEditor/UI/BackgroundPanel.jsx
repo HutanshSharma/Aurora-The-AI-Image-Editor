@@ -155,6 +155,26 @@ export default function BackgroundPanel({
         {view === 'color' && (
           <>
             <div className="flex gap-2.5 overflow-x-auto px-1 pb-1 pt-1 scrollbar-slim">
+              <button onClick={clearBg} className="flex w-16 shrink-0 flex-col items-center gap-2">
+                <span
+                  className={cn(
+                    'flex h-14 w-14 items-center justify-center rounded-full border-2 transition-all active:scale-90',
+                    !editorState.backgroundColor && !editorState.customBackground ? 'border-accent' : 'border-line',
+                  )}
+                  style={{
+                    backgroundColor: '#fff',
+                    backgroundImage:
+                      'linear-gradient(45deg, #cbd5e1 25%, transparent 25%), linear-gradient(-45deg, #cbd5e1 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #cbd5e1 75%), linear-gradient(-45deg, transparent 75%, #cbd5e1 75%)',
+                    backgroundSize: '10px 10px',
+                    backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0px',
+                  }}
+                >
+                  {!editorState.backgroundColor && !editorState.customBackground && (
+                    <Check size={16} className="text-accent drop-shadow" />
+                  )}
+                </span>
+                <span className="w-full truncate text-center text-[11px] font-medium text-ink">Transparent</span>
+              </button>
               {COLORS.map((bg) => (
                 <button key={bg.id} onClick={() => setColor(bg.color)} className="flex w-16 shrink-0 flex-col items-center gap-2">
                   <span

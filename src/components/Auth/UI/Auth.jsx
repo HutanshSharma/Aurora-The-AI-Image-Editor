@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Wand2, Scissors, Palette } from 'lucide-react';
+import { Wand2, Scissors, Palette } from 'lucide-react';
 import LoginForm from './LoginForm';
 import SignUpForm from './SignUpForm';
 import ForgotPassword from './ForgotPassword';
@@ -12,7 +13,8 @@ import Spinner from '../../ui/Spinner';
 import { cn } from '../../ui/cn';
 
 export default function AuthPage({ addToast }) {
-  const [isLogin, setIsLogin] = useState(false);
+  const location = useLocation();
+  const [isLogin, setIsLogin] = useState(location.state?.mode === 'login');
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [showConfirmPassword, setShowComfirmPassword] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -105,17 +107,8 @@ export default function AuthPage({ addToast }) {
               className="mb-5"
               variants={{ hidden: { opacity: 0, scale: 0.85 }, show: { opacity: 1, scale: 1 } }}
             >
-              <div className="flex h-16 w-16 items-center justify-center rounded-[1.4rem] bg-linear-to-br from-accent to-accent-press shadow-soft">
-                <Sparkles size={28} className="text-white" />
-              </div>
+              <img src="/logo_nav.png" alt="Aurora" className="h-20 w-20 object-contain" />
             </motion.div>
-
-            <motion.h1
-              className="bg-linear-to-br from-white to-accent/80 bg-clip-text text-5xl font-bold tracking-tight text-transparent"
-              variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }}
-            >
-              Aurora
-            </motion.h1>
 
             <motion.p
               className="mt-2 max-w-60 text-[15px] leading-snug text-muted"

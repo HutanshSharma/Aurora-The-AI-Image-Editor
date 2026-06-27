@@ -315,8 +315,10 @@ export default function Canvas({
   const flattenComposite = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !uploadedImage) return null;
-    const W = canvas.width;
-    const H = canvas.height;
+    // Render at the image's native resolution (not the window-sized display
+    // canvas) so exports are full-size AND full-quality, with no letterbox.
+    const W = uploadedImage.width;
+    const H = uploadedImage.height;
     const scale = Math.min(W / uploadedImage.width, H / uploadedImage.height);
     const imgWidth = uploadedImage.width * scale;
     const imgHeight = uploadedImage.height * scale;

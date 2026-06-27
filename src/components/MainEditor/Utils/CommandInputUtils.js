@@ -21,7 +21,7 @@ const intentMap = {
     },
     blur: {
         keywords: ['blur', 'blurry', 'focus', 'sharp'],
-        increase: ['add', 'more', 'blur', 'soften', 'defocus'],
+        increase: ['add', 'more', 'soften', 'defocus'],
         decrease: ['remove', 'less', 'sharpen', 'focus', 'crisp'],
         param: 'blur'
     }

@@ -37,9 +37,7 @@ venv/
 *.db
 aurora.db
 
-# Images
-*.jpg
-*.jpeg
+images
 
 
 modal.toml

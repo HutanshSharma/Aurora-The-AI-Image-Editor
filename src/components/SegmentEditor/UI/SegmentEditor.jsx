@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { SlidersHorizontal, Palette, Image as ImageIcon, Download, ZoomIn, Sparkles, X, Save } from "lucide-react";
+import { SlidersHorizontal, Palette, Image as ImageIcon, Download, ZoomIn, Sparkles, X, Save, Eraser, MoreHorizontal } from "lucide-react";
 import { useUser } from '../../../store/UserContext';
 import { useLoader } from '../../../store/LoaderContext';
 import {handleWheel, handleTouchMovePinch, handleTouchEndPinch, handlePanStart, handlePanMove, handlePanEnd} from "../../MainEditor/Utils/CanvasUtils"
@@ -12,6 +12,8 @@ import CommandInput from '../../MainEditor/UI/CommandInput';
 import useHistory from '../../../hooks/useHistory';
 import { loadLUT, applyLUT } from '../../MainEditor/Utils/LUTUtils';
 import { qwenSmartEdit } from '../../MainEditor/Utils/AIEditAPI';
+import { blendSegment } from '../../MainEditor/Utils/segmentBlend';
+import { cn } from '../../ui/cn';
 
 export class Command {
   constructor(doFn, undoFn) {
@@ -20,13 +22,21 @@ export class Command {
   }
 }
 
-function ToolButton({ icon: Icon, label, onClick }) {
+function ToolButton({ icon: Icon, label, onClick, active = false }) {
   return (
     <button
       onClick={onClick}
-      className="flex flex-1 flex-col items-center gap-1.5 py-1 text-muted transition-colors hover:text-ink active:scale-95 sm:w-[76px] sm:flex-none"
+      className={cn(
+        'flex flex-1 flex-col items-center gap-1.5 py-1 transition-colors active:scale-95 sm:w-[76px] sm:flex-none',
+        active ? 'text-accent' : 'text-muted hover:text-ink',
+      )}
     >
-      <span className="flex h-12 w-12 items-center justify-center rounded-full border border-line bg-surface-2 text-ink">
+      <span
+        className={cn(
+          'flex h-12 w-12 items-center justify-center rounded-full border transition-colors',
+          active ? 'border-accent bg-accent/15 text-accent' : 'border-line bg-surface-2 text-ink',
+        )}
+      >
         <Icon size={20} />
       </span>
       <span className="text-[11px] font-medium">{label}</span>
@@ -39,6 +49,8 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
   const [viewMode, setViewMode] = useState('edit');
   const [selectedEditOption, setSelectedEditOption] = useState(null);
   const [activePanel, setActivePanel] = useState(null);
+  const [eraseMode, setEraseMode] = useState(false); // lasso eraser active
+  const [showMore, setShowMore] = useState(false);   // mobile overflow menu
   const [loadedLUT, setLoadedLUT] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -54,6 +66,9 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
   
   const canvasRef = useRef(null);
   const backgroundInputRef = useRef(null);
+  const overlayRef = useRef(null);       // lasso preview overlay
+  const erasePtsRef = useRef([]);        // in-progress loop points (screen coords)
+  const isErasingRef = useRef(false);
 
   const { uploadImage } = useUser();
   const { showLoader, hideLoader } = useLoader();
@@ -263,51 +278,83 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
     ctx.restore();
   }, [currentObject, editorState, zoom, offset, canvasSize, viewMode, loadedLUT]);
 
-  const flattenSegmentComposite = () => {
+  const flattenSegmentComposite = (blend = false) => {
     const obj = currentObject;
     if (!obj?.image?.complete) return null;
+
+    const cw = canvasSize.width;
+    const ch = canvasSize.height;
+    const bgImg = editorState.customBackground?.complete ? editorState.customBackground : null;
+
+    const fit = Math.min(cw / obj.width, ch / obj.height) * 0.7;
+    const imgWvp = obj.width * fit * editorState.imageScale;
+    const imgHvp = obj.height * fit * editorState.imageScale;
+    const imgXvp = (cw - imgWvp) / 2 + editorState.imagePos.x;
+    const imgYvp = (ch - imgHvp) / 2 + editorState.imagePos.y;
+
+    let outW = cw;
+    let outH = ch;
+    let mapScale = 1;
+    let mapOffX = 0;
+    let mapOffY = 0;
+    if (bgImg) {
+      const bw = bgImg.naturalWidth || bgImg.width;
+      const bh = bgImg.naturalHeight || bgImg.height;
+      outW = bw;
+      outH = bh;
+      const coverV = Math.max(cw / bw, ch / bh) * editorState.backgroundScale;
+      const bgXvp = (cw - bw * coverV) / 2 + editorState.backgroundPos.x;
+      const bgYvp = (ch - bh * coverV) / 2 + editorState.backgroundPos.y;
+      mapScale = 1 / coverV;          
+      mapOffX = -bgXvp / coverV;     
+      mapOffY = -bgYvp / coverV;
+    } else {
+      const nativeW = obj.image.naturalWidth || obj.image.width;
+      const ideal = imgWvp > 0 ? nativeW / imgWvp : 1;
+      const maxByDim = Math.max(1, 6000 / Math.max(cw, ch)); 
+      mapScale = Math.max(1, Math.min(ideal, maxByDim));
+      outW = cw * mapScale;
+      outH = ch * mapScale;
+    }
+
     const out = document.createElement('canvas');
-    out.width = canvasSize.width;
-    out.height = canvasSize.height;
+    out.width = Math.round(outW);
+    out.height = Math.round(outH);
     const ctx = out.getContext('2d');
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    if (editorState.customBackground && editorState.customBackground.complete) {
-      const bg = editorState.customBackground;
-      const bw = bg.naturalWidth || bg.width;
-      const bh = bg.naturalHeight || bg.height;
-      const cover = Math.max(out.width / bw, out.height / bh);
-      const bgW = bw * cover * editorState.backgroundScale;
-      const bgH = bh * cover * editorState.backgroundScale;
-      const bgX = (out.width - bgW) / 2 + editorState.backgroundPos.x;
-      const bgY = (out.height - bgH) / 2 + editorState.backgroundPos.y;
-      ctx.drawImage(bg, bgX, bgY, bgW, bgH);
+    if (bgImg) {
+      ctx.drawImage(bgImg, 0, 0, out.width, out.height);
     } else if (editorState.backgroundColor) {
       ctx.fillStyle = editorState.backgroundColor;
       const bgW = out.width * editorState.backgroundScale;
       const bgH = out.height * editorState.backgroundScale;
-      const bgX = (out.width - bgW) / 2 + editorState.backgroundPos.x;
-      const bgY = (out.height - bgH) / 2 + editorState.backgroundPos.y;
+      const bgX = (out.width - bgW) / 2 + editorState.backgroundPos.x * mapScale;
+      const bgY = (out.height - bgH) / 2 + editorState.backgroundPos.y * mapScale;
       ctx.fillRect(bgX, bgY, bgW, bgH);
     }
 
-    const source = segProcessedRef.current?.canvas || obj.image;
-    const fit = Math.min(out.width / obj.width, out.height / obj.height) * 0.7;
-    const imgW = obj.width * fit * editorState.imageScale;
-    const imgH = obj.height * fit * editorState.imageScale;
-    const imgX = (out.width - imgW) / 2 + editorState.imagePos.x;
-    const imgY = (out.height - imgH) / 2 + editorState.imagePos.y;
+    let source = segProcessedRef.current?.canvas || obj.image;
+    if (blend) {
+      source = blendSegment(source, { bgImage: bgImg, harmonizeStrength: bgImg ? 0.4 : 0 });
+    }
+
+    const sw = imgWvp * mapScale;
+    const sh = imgHvp * mapScale;
+    const sx = imgXvp * mapScale + mapOffX;
+    const sy = imgYvp * mapScale + mapOffY;
+
     ctx.save();
-    ctx.translate(imgX + imgW / 2, imgY + imgH / 2);
+    ctx.translate(sx + sw / 2, sy + sh / 2);
     if (editorState.flipH) ctx.scale(-1, 1);
     if (editorState.flipV) ctx.scale(1, -1);
     ctx.rotate((editorState.rotation * Math.PI) / 180);
-    ctx.translate(-(imgW / 2), -(imgH / 2));
-    const blurValue = Math.max(0, Math.min(20, editorState.blur || 0));
+    ctx.translate(-(sw / 2), -(sh / 2));
+    const blurValue = Math.max(0, Math.min(20, editorState.blur || 0)) * mapScale;
     ctx.filter = blurValue > 0 ? `blur(${blurValue}px)` : 'none';
     ctx.globalAlpha = editorState.opacity / 100;
-    ctx.drawImage(source, 0, 0, imgW, imgH);
+    ctx.drawImage(source, 0, 0, sw, sh);
     ctx.restore();
     return out;
   };
@@ -387,20 +434,22 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
   };
 
   const downloadImage = () => {
-    const canvas = canvasRef.current;
+    const out = flattenSegmentComposite(true);
+    if (!out) return;
     const link = document.createElement('a');
-    link.download = `${currentObject.name}.png`;
-    link.href = canvas.toDataURL('image/png', 1.0);
+    link.download = `${currentObject?.name || 'aurora'}.png`;
+    link.href = out.toDataURL('image/png', 1.0);
     link.click();
   };
 
   const saveToLibrary = async () => {
-    const canvas = canvasRef.current;
-    if (!canvas || isSaving) return;
+    if (isSaving) return;
+    const out = flattenSegmentComposite(true);
+    if (!out) return;
     setIsSaving(true);
     showLoader('Saving to library…');
     try {
-      const blob = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+      const blob = await new Promise((res) => out.toBlob(res, 'image/png'));
       if (!blob) throw new Error('Could not render the image');
       const formData = new FormData();
       formData.append('file', blob, `aurora_${Date.now()}.png`);
@@ -445,6 +494,10 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
   const saveAndExit = async () => {
     setIsSaving(true);
     try {
+      const hasBg = !!(editorState.backgroundColor || editorState.customBackground);
+      const compositeCanvas = hasBg ? flattenSegmentComposite(true) : null;
+      const compositeDataUrl = compositeCanvas ? compositeCanvas.toDataURL('image/png', 1.0) : null;
+
       const tempCanvas = document.createElement('canvas');
       const currentObj = editorState.editedObjects[selectedObjectIndex];
       
@@ -501,8 +554,8 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
           displayScaleFactor: currentObj.displayScaleFactor,
         };
         finalEditedObjects[selectedObjectIndex] = finalObject;
-        
-        await onSave?.(finalEditedObjects);
+
+        await onSave?.(finalEditedObjects, { hasBackground: hasBg, compositeDataUrl });
         setShowEditor(false);
         setIsSaving(false);
       };
@@ -553,11 +606,11 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
     }
   };
 
-  const pointerOnSegment = (clientX, clientY) => {
+  const screenToNative = (clientX, clientY) => {
     const m = canvasMetrics();
     const canvas = canvasRef.current;
     const img = currentObject?.image;
-    if (!m || !canvas || !img) return false;
+    if (!m || !canvas || !img) return null;
 
     const bx = (clientX - m.rect.left - m.padX) / m.scale;
     const by = (clientY - m.rect.top - m.padY) / m.scale;
@@ -579,21 +632,125 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
     const sin = Math.sin(rad);
     const dispX = lx * cos - ly * sin + imgW / 2;
     const dispY = lx * sin + ly * cos + imgH / 2;
-    if (dispX < 0 || dispY < 0 || dispX > imgW || dispY > imgH) return false;
 
     const natW = img.naturalWidth || img.width;
     const natH = img.naturalHeight || img.height;
-    const natX = Math.floor((dispX / imgW) * natW);
-    const natY = Math.floor((dispY / imgH) * natH);
-    return sampleSegmentAlpha(natX, natY) > 16;
+    return {
+      x: (dispX / imgW) * natW,
+      y: (dispY / imgH) * natH,
+      inside: dispX >= 0 && dispY >= 0 && dispX <= imgW && dispY <= imgH,
+    };
+  };
+
+  const screenToCanvasInternal = (clientX, clientY) => {
+    const m = canvasMetrics();
+    if (!m) return null;
+    return { x: (clientX - m.rect.left - m.padX) / m.scale, y: (clientY - m.rect.top - m.padY) / m.scale };
+  };
+
+  const pointerOnSegment = (clientX, clientY) => {
+    const p = screenToNative(clientX, clientY);
+    if (!p || !p.inside) return false;
+    return sampleSegmentAlpha(Math.floor(p.x), Math.floor(p.y)) > 16;
+  };
+
+  const traceSmoothPath = (ctx, pts) => {
+    if (pts.length < 2) return;
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length - 1; i++) {
+      const mx = (pts[i].x + pts[i + 1].x) / 2;
+      const my = (pts[i].y + pts[i + 1].y) / 2;
+      ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+    }
+    ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+  };
+
+  const drawErasePreview = () => {
+    const o = overlayRef.current;
+    if (!o) return;
+    const ctx = o.getContext('2d');
+    ctx.clearRect(0, 0, o.width, o.height);
+    const pts = erasePtsRef.current.map((p) => screenToCanvasInternal(p.clientX, p.clientY)).filter(Boolean);
+    if (pts.length < 2) return;
+    ctx.beginPath();
+    traceSmoothPath(ctx, pts);
+    ctx.fillStyle = 'rgba(244,63,94,0.18)';
+    ctx.fill();
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(244,63,94,0.95)';
+    ctx.lineWidth = 2 * (window.devicePixelRatio > 1 ? 2 : 1);
+    ctx.setLineDash([8, 5]);
+    ctx.stroke();
+  };
+
+  const cancelErase = () => {
+    isErasingRef.current = false;
+    erasePtsRef.current = [];
+    const o = overlayRef.current;
+    if (o) o.getContext('2d').clearRect(0, 0, o.width, o.height);
+  };
+
+  const commitErase = () => {
+    const screenPts = erasePtsRef.current;
+    cancelErase();
+    if (screenPts.length < 3) return;
+    const obj = currentObject;
+    const img = obj?.image;
+    if (!img) return;
+    const natPts = screenPts.map((p) => screenToNative(p.clientX, p.clientY)).filter(Boolean);
+    if (natPts.length < 3) return;
+
+    const W = img.naturalWidth || img.width;
+    const H = img.naturalHeight || img.height;
+
+    const seg = document.createElement('canvas');
+    seg.width = W; seg.height = H;
+    const sctx = seg.getContext('2d');
+    sctx.drawImage(img, 0, 0);
+
+    const mask = document.createElement('canvas');
+    mask.width = W; mask.height = H;
+    const mctx = mask.getContext('2d');
+    const feather = Math.min(2, Math.max(0.6, Math.min(W, H) * 0.0015));
+    mctx.filter = `blur(${feather}px)`;
+    mctx.fillStyle = '#fff';
+    mctx.beginPath();
+    traceSmoothPath(mctx, natPts);
+    mctx.closePath();
+    mctx.fill();
+
+    sctx.globalCompositeOperation = 'destination-out';
+    sctx.drawImage(mask, 0, 0);
+
+    const idx = selectedObjectIndex;
+    const newImg = new Image();
+    newImg.onload = () => {
+      execute(new Command(
+        (s) => ({ ...s, editedObjects: s.editedObjects.map((o2, i) => (i === idx ? { ...o2, image: newImg } : o2)) }),
+        (s) => ({ ...s }),
+      ));
+    };
+    newImg.src = seg.toDataURL('image/png', 1.0);
   };
 
   const handleCanvasDown = (clientX, clientY) => {
+    if (eraseMode) {
+      isErasingRef.current = true;
+      erasePtsRef.current = [{ clientX, clientY }];
+      drawErasePreview();
+      return;
+    }
     dragModeRef.current = pointerOnSegment(clientX, clientY) ? 'segment' : 'background';
     handlePanStart(clientX, clientY, isDraggingRef, lastDragPosRef);
   };
 
   const handleCanvasMove = (clientX, clientY) => {
+    if (eraseMode) {
+      if (!isErasingRef.current) return;
+      erasePtsRef.current.push({ clientX, clientY });
+      drawErasePreview();
+      return;
+    }
     if (!isDraggingRef.current) return;
     const mode = dragModeRef.current;
 
@@ -618,7 +775,19 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
     );
   };
 
-  const handleCanvasUp = () => handlePanEnd(isDraggingRef);
+  const handleCanvasUp = () => {
+    if (eraseMode) { commitErase(); return; }
+    handlePanEnd(isDraggingRef);
+  };
+
+  useEffect(() => {
+    const o = overlayRef.current;
+    if (o) { o.width = canvasSize.width; o.height = canvasSize.height; }
+  }, [canvasSize, eraseMode]);
+
+  useEffect(() => { if (!eraseMode) cancelErase(); }, [eraseMode]);
+
+  const openPanel = (p) => { setEraseMode(false); setShowMore(false); setActivePanel(p); };
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
@@ -651,15 +820,28 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
             <span className="tabular-nums">{Math.round(zoom * 100)}%</span>
           </div>
 
+          {eraseMode && (
+            <div className="absolute right-4 top-4 z-30 flex items-center gap-2 rounded-full border border-line bg-surface-2 px-3 py-1.5 text-[12px] text-ink shadow-pop">
+              <Eraser size={13} className="text-accent" />
+              <span className="hidden sm:inline">Draw a loop around the part to remove</span>
+              <span className="sm:hidden">Loop to remove</span>
+              <button
+                onClick={() => setEraseMode(false)}
+                className="ml-1 rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-accent-hover"
+              >
+                Done
+              </button>
+            </div>
+          )}
+
           <div
             className="h-full w-full p-3 pb-28"
             onWheel={(e) => handleWheel(e, setZoom, setOffset, canvasRef)}
             style={{ touchAction: 'none' }}
           >
-            <canvas
-              ref={canvasRef}
-              className="h-full w-full object-contain"
-              style={{ cursor: isDraggingRef.current ? 'grabbing' : 'grab' }}
+            <div
+              className="relative h-full w-full"
+              style={{ cursor: eraseMode ? 'crosshair' : isDraggingRef.current ? 'grabbing' : 'grab' }}
               onMouseDown={(e) => handleCanvasDown(e.clientX, e.clientY)}
               onMouseMove={(e) => handleCanvasMove(e.clientX, e.clientY)}
               onMouseUp={handleCanvasUp}
@@ -670,6 +852,7 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
               }}
               onTouchMove={(e) => {
                 if (e.touches.length === 2) {
+                  if (eraseMode) cancelErase();
                   handleTouchMovePinch(e, lastDistanceRef, setZoom, setOffset, canvasRef);
                 } else if (e.touches.length === 1) {
                   const t = e.touches[0];
@@ -680,7 +863,15 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
                 handleTouchEndPinch(lastDistanceRef);
                 handleCanvasUp();
               }}
-            />
+            >
+              <canvas ref={canvasRef} className="pointer-events-none h-full w-full object-contain" />
+              {eraseMode && (
+                <canvas
+                  ref={overlayRef}
+                  className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+                />
+              )}
+            </div>
           </div>
 
           {activePanel === 'adjust' && (
@@ -724,6 +915,7 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
             />
           )}
 
+
           {activePanel === 'command' && (
             <div className="fixed inset-x-0 bottom-0 z-40 bg-black">
               <div className="mx-auto max-w-3xl px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
@@ -751,11 +943,41 @@ export default function SegmentEditor({ setShowEditor, droppedObjects, onSave, a
 
           {!activePanel && (
             <div className="fixed inset-x-0 bottom-0 z-30 bg-black sm:pointer-events-none sm:bg-transparent">
-              <div className="pointer-events-auto mx-auto flex max-w-3xl items-center justify-around gap-1 px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:mb-6 sm:w-fit sm:max-w-none sm:justify-center sm:gap-2 sm:rounded-3xl sm:border sm:border-line sm:bg-surface/95 sm:px-4 sm:py-2.5 sm:shadow-pop sm:backdrop-blur">
-                <ToolButton icon={SlidersHorizontal} label="Adjust" onClick={() => setActivePanel('adjust')} />
-                <ToolButton icon={Palette} label="Filters" onClick={() => setActivePanel('filters')} />
-                <ToolButton icon={ImageIcon} label="Background" onClick={() => setActivePanel('background')} />
-                <ToolButton icon={Sparkles} label="AI" onClick={() => setActivePanel('command')} />
+              {/* Mobile: core tools + a "More" overflow menu for export actions */}
+              <div className="pointer-events-auto relative mx-auto flex max-w-3xl items-center justify-around gap-1 px-3 pt-3 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:hidden">
+                <ToolButton icon={SlidersHorizontal} label="Adjust" onClick={() => openPanel('adjust')} />
+                <ToolButton icon={Palette} label="Filters" onClick={() => openPanel('filters')} />
+                <ToolButton icon={ImageIcon} label="Background" onClick={() => openPanel('background')} />
+                <ToolButton icon={Eraser} label="Erase" active={eraseMode} onClick={() => { setActivePanel(null); setShowMore(false); setEraseMode((v) => !v); }} />
+                <ToolButton icon={Sparkles} label="AI" onClick={() => openPanel('command')} />
+                <ToolButton icon={MoreHorizontal} label="More" onClick={() => setShowMore((v) => !v)} />
+                {showMore && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowMore(false)} />
+                    <div className="absolute bottom-full right-2 z-20 mb-2 w-48 overflow-hidden rounded-2xl border border-line bg-surface-2 shadow-pop">
+                      <button
+                        onClick={() => { setShowMore(false); saveToLibrary(); }}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-[14px] text-ink transition-colors hover:bg-surface-3"
+                      >
+                        <Save size={16} className="text-muted" /> Save to library
+                      </button>
+                      <button
+                        onClick={() => { setShowMore(false); downloadImage(); }}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-[14px] text-ink transition-colors hover:bg-surface-3"
+                      >
+                        <Download size={16} className="text-muted" /> Download
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="pointer-events-auto mx-auto mb-6 hidden w-fit items-center justify-center gap-2 rounded-3xl border border-line bg-surface/95 px-4 py-2.5 shadow-pop backdrop-blur sm:flex">
+                <ToolButton icon={SlidersHorizontal} label="Adjust" onClick={() => openPanel('adjust')} />
+                <ToolButton icon={Palette} label="Filters" onClick={() => openPanel('filters')} />
+                <ToolButton icon={ImageIcon} label="Background" onClick={() => openPanel('background')} />
+                <ToolButton icon={Eraser} label="Erase" active={eraseMode} onClick={() => { setActivePanel(null); setEraseMode((v) => !v); }} />
+                <ToolButton icon={Sparkles} label="AI" onClick={() => openPanel('command')} />
                 <ToolButton icon={Save} label="Save" onClick={saveToLibrary} />
                 <ToolButton icon={Download} label="Download" onClick={downloadImage} />
               </div>

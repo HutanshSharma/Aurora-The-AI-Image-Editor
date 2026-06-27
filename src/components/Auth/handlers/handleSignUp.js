@@ -94,8 +94,8 @@ export default function handleSignUp(signupData, requirements, addToast, setIsLo
         addToast('Account created and logged in successfully.','success')
         localStorage.setItem('refresh_token',refreshData['refresh_token'])
         setIsLoading(false);
-        if (navigate) navigate('/', { replace: true })
-        else window.location.href = '/'
+        if (navigate) navigate('/editor', { replace: true })
+        else window.location.href = '/editor'
       }
       catch(error){
         addToast('Something went wrong. Please try again later.','invalid')

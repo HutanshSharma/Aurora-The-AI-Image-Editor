@@ -1,6 +1,7 @@
 import { useState, lazy, Suspense } from "react";
 import Toast from "./components/Toast";
 const AuthPage = lazy(() => import("./components/Auth/UI/Auth"));
+const Landing = lazy(() => import("./components/Landing/Landing"));
 const ResetPassword = lazy(() => import("./components/Auth/UI/ResetPassword"));
 const VerifyEmail = lazy(() => import("./components/Auth/UI/VerifyEmail"));
 const Editor = lazy(()=>import("./components/MainEditor/UI/Editor"))
@@ -16,9 +17,9 @@ function PrivateRoute({ children }) {
 
 function LogChecker({ children, location }){
   const token = localStorage.getItem("refresh_token");
-  let next_page = '/'
+  let next_page = '/editor'
   if(location.pathname !== '/auth') next_page = location.pathname
-  return token ? <Navigate to={next_page} replace /> : children; 
+  return token ? <Navigate to={next_page} replace /> : children;
 }
 
 function EditorWithLoader({ addToast }) {
@@ -54,12 +55,14 @@ function App() {
       <ClipLoader color="rgba(239,68,68,0.9)" size={50} className="loader"/>
       </div>}>
     <Routes >
+      <Route path="/" element={<Landing />}/>
+
       <Route path="/auth" element={
         <LogChecker location={location}>
         <AuthPage addToast={addToast}/>
         </LogChecker>}/>
 
-      <Route path="/" element={
+      <Route path="/editor" element={
         <UserProvider addToast={addToast} >
           <PrivateRoute addToast={addToast} >
             <LoaderProvider>

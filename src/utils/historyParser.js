@@ -35,7 +35,7 @@ export function parseHistory(initialState, historyTree, currentNodeId) {
   });
 
   const processNode = (node, depth, branchIndex) => {
-    const label = generateLabel(node.state, node.id);
+    const label = node.label || generateLabel(node.state, node.id);
     
     enrichedNodes.push({
       id: node.id,

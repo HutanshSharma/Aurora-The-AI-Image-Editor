@@ -11,15 +11,16 @@ import useHistory from '../../../hooks/useHistory.jsx';
 import { useUser } from '../../../store/UserContext.jsx';
 import { useLoader } from '../../../store/LoaderContext.jsx';
 import AdjustBar from './AdjustBar.jsx';
+import CropOverlay from './CropOverlay.jsx';
 import LUTSlider from './LUTSlider.jsx';
 import HistoryViewer from './HistoryViewer.jsx';
 import { loadLUT } from '../Utils/LUTUtils.js';
+import { blendSegmentIntoImage } from '../Utils/segmentBlend.js';
 import { uploadAndSegment } from '../Utils/SegmentationAPI.js';
 import { qwenSmartEdit } from '../Utils/AIEditAPI.js';
 import { getAdaptiveLUT } from '../../ColorGradingUtils/lut3d.js';
 import { registerAdaptiveLUT, getAdaptiveLUTById, clearAdaptiveLUTs } from '../../ColorGradingUtils/adaptiveLutStore.js';
 import { setWorkerErrorHandler } from '../../ColorGradingUtils/onnxClient.js';
-import watermarkImg from '../../../assets/watermark.png';
 import { ArrowLeft } from 'lucide-react';
 
 export class Command {
@@ -41,6 +42,7 @@ const initialEditorState = {
   sharpen: 0,
   hue: 0,
   selectedLUT: null,
+  srcImage: null,
 };
 
 const Editor = ({ addToast }) => {
@@ -55,6 +57,8 @@ const Editor = ({ addToast }) => {
   const [showEditor, setShowEditor] = useState(false);
   const [selectedEditOption, setSelectedEditOption] = useState(null);
   const [showAdjust, setShowAdjust] = useState(false);
+  const [cropMode, setCropMode] = useState(false);
+  const [cropSource, setCropSource] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [displayZoom, setDisplayZoom] = useState(1);
   const [loadedLUT, setLoadedLUT] = useState(null);
@@ -84,8 +88,15 @@ const Editor = ({ addToast }) => {
     historyTree,
     currentNodeId,
     jumpToNode,
-    addBranch
+    addBranch,
+    reset,
+    patchCurrentState,
+    initialState: historyRootState
   } = useHistory(initialEditorState);
+
+  useEffect(() => {
+    setUploadedImage(editorState.srcImage ?? null);
+  }, [editorState.srcImage]);
 
   const runWithApplyLoader = (fn, msg) => {
     pendingApplyRef.current = true;
@@ -189,10 +200,9 @@ const Editor = ({ addToast }) => {
   };
 
   const loadNewImage = (img) => {
-    setUploadedImage(img);
     setSegmentationImageId(null);
     clearAdaptiveLUTs();
-    jumpToNode(null);
+    reset({ ...initialEditorState, srcImage: img });
   };
 
   const handleImageClick = async (imageItem) => {
@@ -253,54 +263,23 @@ const Editor = ({ addToast }) => {
     setShowAdjust(false);
   };
 
-  const downloadImage = async () => {
-    const canvas = document.querySelector('canvas');
-    if (!canvas) return;
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const ctx = tempCanvas.getContext('2d');
+  const getExportCanvas = () => {
+    const c = flattenRef.current?.();
+    if (c) return c;
+    if (!uploadedImage) return null;
+    const cv = document.createElement('canvas');
+    cv.width = uploadedImage.width;
+    cv.height = uploadedImage.height;
+    cv.getContext('2d').drawImage(uploadedImage, 0, 0);
+    return cv;
+  };
 
-    ctx.drawImage(canvas, 0, 0);
-
-    const watermark = new Image();
-    watermark.src = watermarkImg;
-    
-    await new Promise((resolve) => {
-      watermark.onload = () => {
-        const circleSize = 70; 
-        const watermarkSize = 50; 
-        const padding = 15; 
-        
-        const centerX = tempCanvas.width - circleSize / 2 - padding;
-        const centerY = tempCanvas.height - circleSize / 2 - padding;
-        const radius = circleSize / 2;
-        ctx.save();        
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.fillStyle = 'white';
-        ctx.fill();        
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();        
-        ctx.globalAlpha = 0.9;
-        ctx.drawImage(
-          watermark, 
-          centerX - watermarkSize / 2, 
-          centerY - watermarkSize / 2, 
-          watermarkSize, 
-          watermarkSize
-        );        
-        ctx.restore();
-        
-        resolve();
-      };
-    });
+  const downloadImage = () => {
+    const out = getExportCanvas();
+    if (!out) return;
     const link = document.createElement('a');
-    link.download = `edited_image_${Date.now()}.png`;
-    link.href = tempCanvas.toDataURL('image/png', 1.0);
+    link.download = `aurora_${Date.now()}.png`;
+    link.href = out.toDataURL('image/png', 1.0);
     link.click();
   };
 
@@ -333,33 +312,54 @@ const Editor = ({ addToast }) => {
     setSelectedEditOption(null);
   };
 
-  const handleApplyEditedSegments = async (editedObjects) => {
-    setMergedSegments(editedObjects);
-    setDroppedObjects([]);    
+  const handleApplyEditedSegments = async (editedObjects, opts = {}) => {
+    setDroppedObjects([]);
     setHasUnsavedChanges(true);
+
+    if (opts.hasBackground && opts.compositeDataUrl) {
+      await new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          clearAdaptiveLUTs();
+          setSegmentationImageId(null);
+          setMergedSegments([]);
+          reset({ ...initialEditorState, srcImage: img });
+          resolve();
+        };
+        img.src = opts.compositeDataUrl;
+      });
+      return;
+    }
+
+    setMergedSegments(editedObjects);
     await mergeSegmentsIntoImage(editedObjects);
   };
 
   const mergeSegmentsIntoImage = async (editedObjects) => {
-    if (!uploadedImage || editedObjects.length === 0) return;    
+    if (!uploadedImage || editedObjects.length === 0) return;
     const canvas = document.createElement('canvas');
     canvas.width = uploadedImage.width;
     canvas.height = uploadedImage.height;
-    const ctx = canvas.getContext('2d', { alpha: true });    
+    const ctx = canvas.getContext('2d', { alpha: true });
     ctx.drawImage(uploadedImage, 0, 0);
-    
+
     for (const segment of editedObjects) {
       if (segment.image && segment.image.complete) {
-        ctx.drawImage(segment.image, 0, 0, canvas.width, canvas.height);
+        const blended = blendSegmentIntoImage(segment.image, uploadedImage, canvas.width, canvas.height);
+        ctx.drawImage(blended, 0, 0);
       }
     }
 
     const mergedImage = new Image();
     mergedImage.crossOrigin = "anonymous";
-    
+    const prev = uploadedImage;
+
     return new Promise((resolve) => {
       mergedImage.onload = () => {
-        setUploadedImage(mergedImage);
+        execute(new Command(
+          (s) => ({ ...s, srcImage: mergedImage }),
+          (s) => ({ ...s, srcImage: prev }),
+        ), false, null, null, 'Segment applied');
         setMergedSegments([]);
         setSegmentationImageId(null);
         resolve();
@@ -385,7 +385,7 @@ const Editor = ({ addToast }) => {
         const url = URL.createObjectURL(result.blob);
         const compressedImg = new Image();
         compressedImg.onload = () => {
-          setUploadedImage(compressedImg);
+          patchCurrentState({ srcImage: compressedImg });
           URL.revokeObjectURL(url);
         };
         compressedImg.src = url;
@@ -399,8 +399,39 @@ const Editor = ({ addToast }) => {
     }
   };
 
+  const startCrop = () => {
+    const src = flattenRef.current?.() || uploadedImage;
+    if (!src) return;
+    setShowAdjust(false);
+    setCropSource(src);
+    setCropMode(true);
+  };
+
+  const handleCropConfirm = (x, y, w, h) => {
+    const src = cropSource;
+    if (!src || w < 1 || h < 1) { setCropMode(false); setCropSource(null); return; }
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    c.getContext('2d').drawImage(src, x, y, w, h, 0, 0, w, h);
+    const cropped = new Image();
+    cropped.onload = () => {
+      execute(new Command(
+        () => ({ ...initialEditorState, srcImage: cropped }),
+        (s) => ({ ...s }),
+      ), false, null, null, 'Cropped');
+      setCropMode(false);
+      setCropSource(null);
+    };
+    cropped.src = c.toDataURL('image/png', 1.0);
+  };
+
   const applyAIEdit = (img) => {
-    setUploadedImage(img);
+    const prev = uploadedImage;
+    execute(new Command(
+      (s) => ({ ...s, srcImage: img }),
+      (s) => ({ ...s, srcImage: prev }),
+    ), false, null, null, 'AI edit');
     setSegmentationImageId(null);
     setMergedSegments([]);
     setHasUnsavedChanges(true);
@@ -460,26 +491,18 @@ const Editor = ({ addToast }) => {
   };
 
   const saveImage = async () => {
-    if (!uploadedImage) return;
-    
+    const out = getExportCanvas();
+    if (!out) return;
+
     setIsSaving(true);
     try {
-      const canvas = document.createElement('canvas');
-      canvas.width = uploadedImage.width;
-      canvas.height = uploadedImage.height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(uploadedImage, 0, 0);
-      
-      await new Promise((resolve) => {
-        canvas.toBlob(async (blob) => {
-          const formData = new FormData();
-          formData.append('file', blob, `edited_${Date.now()}.png`);
-          
-          await uploadImage(formData);
-          setHasUnsavedChanges(false);
-          resolve();
-        }, 'image/png');
-      });
+      const blob = await new Promise((resolve) => out.toBlob(resolve, 'image/png'));
+      if (blob) {
+        const formData = new FormData();
+        formData.append('file', blob, `aurora_${Date.now()}.png`);
+        await uploadImage(formData);
+        setHasUnsavedChanges(false);
+      }
     } catch (error) {
       console.error('Failed to save image:', error);
     } finally {
@@ -626,6 +649,7 @@ const Editor = ({ addToast }) => {
                 execute={execute}
                 Command={Command}
                 resetFilters={resetFilters}
+                onStartCrop={startCrop}
                 onClose={() => {
                   setShowAdjust(false);
                   setSelectedEditOption(null);
@@ -633,6 +657,14 @@ const Editor = ({ addToast }) => {
               />
             )}
           </div>
+        )}
+
+        {cropMode && cropSource && (
+          <CropOverlay
+            source={cropSource}
+            onConfirm={handleCropConfirm}
+            onCancel={() => { setCropMode(false); setCropSource(null); }}
+          />
         )}
 
         {uploadedImage && !showImages && !showEditor && !showAdjust && !showLUTSelector && (
@@ -682,7 +714,7 @@ const Editor = ({ addToast }) => {
         {uploadedImage && !showEditor &&!showImages && (
           <HistoryViewer
             uploadedImage={uploadedImage}
-            initialState={initialEditorState}
+            initialState={historyRootState}
             historyTree={historyTree}
             currentNodeId={currentNodeId}
             loadedLUT={loadedLUT}

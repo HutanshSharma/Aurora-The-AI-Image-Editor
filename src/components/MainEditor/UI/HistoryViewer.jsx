@@ -175,7 +175,8 @@ const HistoryViewer = ({
       setIsGenerating(true);
       for (const snap of missing) {
         if (cancelled) return;
-        const url = await generateThumbnail(uploadedImage, snap.state);
+        const baseImg = snap.state?.srcImage || uploadedImage;
+        const url = await generateThumbnail(baseImg, snap.state);
         if (cancelled) return;
         thumbsRef.current = { ...thumbsRef.current, [thumbKey(snap.id)]: url };
         setThumbnails(thumbsRef.current);

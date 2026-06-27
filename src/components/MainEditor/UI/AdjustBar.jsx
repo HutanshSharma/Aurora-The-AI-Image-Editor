@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Sun, Contrast, Droplet, Sparkles, RotateCw, ImageIcon, Palette, Aperture,
-  FlipHorizontal, FlipVertical, X, RotateCcw,
+  FlipHorizontal, FlipVertical, X, RotateCcw, Crop,
 } from 'lucide-react';
 import EditSlider from '../../SegmentEditor/UI/EditSlider';
 import { cn } from '../../ui/cn';
@@ -42,6 +42,7 @@ export default function AdjustBar({
   execute,
   Command,
   resetFilters,
+  onStartCrop,
   onClose,
 }) {
   const [sliderOpen, setSliderOpen] = useState(false);
@@ -89,6 +90,7 @@ export default function AdjustBar({
               ))}
               <Option icon={FlipHorizontal} label="Flip H" active={editorState.flipH} onClick={() => toggleFlip('flipH')} />
               <Option icon={FlipVertical} label="Flip V" active={editorState.flipV} onClick={() => toggleFlip('flipV')} />
+              {onStartCrop && <Option icon={Crop} label="Crop" onClick={onStartCrop} />}
             </div>
 
             <div className="mt-7 flex items-center justify-between border-t border-line px-1 pb-4 pt-7">

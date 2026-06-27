@@ -10,6 +10,8 @@ class Command {
 export default function useHistory(initialState) {
   const [state, setState] = useState(initialState);
 
+  const initialStateRef = useRef(initialState);
+
   const historyTree = useRef([]);
   const currentNodeId = useRef(null);
   const nextId = useRef(0);
@@ -21,7 +23,7 @@ export default function useHistory(initialState) {
   const finalStateRef = useRef(null); 
   const debounceCounterRef = useRef(0);
 
-  const execute = (cmd, isSliderCommand = false, forceStartValue = null, forceFinalValue = null) => {
+  const execute = (cmd, isSliderCommand = false, forceStartValue = null, forceFinalValue = null, label = null) => {
     if (isRestoring.current) return;
     
     setState(prev => {
@@ -58,7 +60,8 @@ export default function useHistory(initialState) {
           parentId: currentNodeId.current,
           children: [],
           state: newState,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          label
         };
         
         if (currentNodeId.current !== null) {
@@ -91,10 +94,10 @@ export default function useHistory(initialState) {
     const currentNode = historyTree.current.find(n => n.id === currentNodeId.current);
     if (currentNode && currentNode.parentId !== null) {
       const parentNode = historyTree.current.find(n => n.id === currentNode.parentId);
-      setState(parentNode ? parentNode.state : initialState);
+      setState(parentNode ? parentNode.state : initialStateRef.current);
       currentNodeId.current = currentNode.parentId;
     } else if (currentNode && currentNode.parentId === null) {
-      setState(initialState);
+      setState(initialStateRef.current);
       currentNodeId.current = null;
     }
 
@@ -139,7 +142,7 @@ export default function useHistory(initialState) {
     isRestoring.current = true;
 
     if (nodeId === null) {
-      setState(initialState);
+      setState(initialStateRef.current);
       currentNodeId.current = null;
     } else {
       const targetNode = historyTree.current.find(n => n.id === nodeId);
@@ -215,6 +218,35 @@ export default function useHistory(initialState) {
     return newNode.id;
   };
 
+  const reset = (newRootState) => {
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+      pendingCommand.current = null;
+      originalStateRef.current = null;
+      finalStateRef.current = null;
+      debounceCounterRef.current = 0;
+    }
+    historyTree.current = [];
+    currentNodeId.current = null;
+    nextId.current = 0;
+    isRestoring.current = false;
+    initialStateRef.current = newRootState;
+    setState(newRootState);
+  };
+
+  const patchCurrentState = (patch) => {
+    setState(prev => {
+      const merged = { ...prev, ...patch };
+      if (currentNodeId.current === null) {
+        initialStateRef.current = merged;
+      } else {
+        const node = historyTree.current.find(n => n.id === currentNodeId.current);
+        if (node) node.state = merged;
+      }
+      return merged;
+    });
+  };
+
   const canUndo = currentNodeId.current !== null;
   const canRedo = () => {
     const currentNode = currentNodeId.current === null 
@@ -236,6 +268,8 @@ export default function useHistory(initialState) {
     currentNodeId: currentNodeId.current,
     jumpToNode,
     addBranch,
-    initialState
+    reset,
+    patchCurrentState,
+    initialState: initialStateRef.current
   };
 }

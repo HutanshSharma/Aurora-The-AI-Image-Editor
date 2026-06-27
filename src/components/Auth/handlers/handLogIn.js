@@ -58,8 +58,8 @@ export default function handleLogIn(loginData, addToast, setIsLoading, navigate)
         localStorage.setItem('refresh_token',refreshData['refresh_token'])
         addToast("Logged in successfully","success")
         setIsLoading(false);
-        if (navigate) navigate('/', { replace: true })
-        else window.location.href = '/'
+        if (navigate) navigate('/editor', { replace: true })
+        else window.location.href = '/editor'
       }
       catch(error){
         addToast('Something went wrong. Please try again later.','invalid')
