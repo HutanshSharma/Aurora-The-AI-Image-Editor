@@ -13,9 +13,9 @@ The system has two render paths that share the exact same maths:
 
 - **Viewport render** — what you see on screen (fit‑to‑screen, zoom/pan aware).
 - **`flattenComposite` render** — a full **native‑resolution** copy used for
-  exports (download / save), crops and AI hand‑offs. This is the WYSIWYG
+  exports (download / save), crops and AI hand‑offs. This is the WYSIWYG (What You See Is What You Get)
   guarantee: what is exported is pixel‑for‑pixel what the viewport shows, just at
-  full resolution and with no letterbox.
+  full resolution and with no letterbox (resizing an image while preserving its aspect ratio by adding padding (usually black) to fit the target dimensions.).
 
 ---
 
