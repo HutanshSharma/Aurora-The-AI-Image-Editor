@@ -178,14 +178,6 @@ flowchart LR
 
 ---
 
-## 6. Models used
-
-**None.** The history system is pure data‑structure + Canvas thumbnailing. It
-*hosts* AI results (the predictive grade adds branches here) but contains no
-model itself.
-
----
-
 ## 7. Summary
 
 - A **tree of full‑state snapshots**, stored in refs, makes undo/redo/jump O(1)
