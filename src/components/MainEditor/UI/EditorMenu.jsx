@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   MoreVertical, SlidersHorizontal, Palette, History, Save, Download,
-  RotateCcw, Images, Scissors, Boxes,
+  RotateCcw, Images, Scissors, Boxes, Wand2,
 } from 'lucide-react';
 import { cn } from '../../ui/cn';
 
@@ -17,6 +17,7 @@ export default function EditorMenu({
   onLibrary,
   onOpenCutout,
   onSegment,
+  onColorGrade,
   isSegmented,
   hasUnsavedChanges,
   showCutout,
@@ -48,6 +49,7 @@ export default function EditorMenu({
     showCutout && { icon: Scissors, label: 'Edit cut-out', onClick: run(onOpenCutout), accent: true },
     { icon: SlidersHorizontal, label: 'Adjust', onClick: run(onAdjust) },
     { icon: Palette, label: 'Filters', onClick: run(onFilters) },
+    onColorGrade && { icon: Wand2, label: 'AI color grade', onClick: run(onColorGrade), accent: true },
     onSegment && { icon: Boxes, label: isSegmented ? 'Objects detected' : 'Segment image', onClick: run(onSegment), disabled: isSegmented, accent: !isSegmented },
     { icon: History, label: 'Edit history', onClick: run(onHistory) },
     'divider',

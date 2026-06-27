@@ -16,6 +16,9 @@ import HistoryViewer from './HistoryViewer.jsx';
 import { loadLUT } from '../Utils/LUTUtils.js';
 import { uploadAndSegment } from '../Utils/SegmentationAPI.js';
 import { qwenSmartEdit } from '../Utils/AIEditAPI.js';
+import { getAdaptiveLUT } from '../../ColorGradingUtils/lut3d.js';
+import { registerAdaptiveLUT, getAdaptiveLUTById, clearAdaptiveLUTs } from '../../ColorGradingUtils/adaptiveLutStore.js';
+import { setWorkerErrorHandler } from '../../ColorGradingUtils/onnxClient.js';
 import watermarkImg from '../../../assets/watermark.png';
 import { ArrowLeft } from 'lucide-react';
 
@@ -83,10 +86,11 @@ const Editor = ({ addToast }) => {
     jumpToNode,
     addBranch
   } = useHistory(initialEditorState);
-  const jumpToNodeWithLoader = (nodeId) => {
+
+  const runWithApplyLoader = (fn, msg) => {
     pendingApplyRef.current = true;
-    showLoader('Applying changes…');
-    jumpToNode(nodeId);
+    showLoader(msg);
+    fn();
     clearTimeout(applyTimeoutRef.current);
     applyTimeoutRef.current = setTimeout(() => {
       if (pendingApplyRef.current) {
@@ -95,6 +99,9 @@ const Editor = ({ addToast }) => {
       }
     }, 4000);
   };
+  const jumpToNodeWithLoader = (nodeId) => runWithApplyLoader(() => jumpToNode(nodeId), 'Applying changes…');
+  const handleUndoWithLoader = () => runWithApplyLoader(handleUndo, 'Reverting…');
+  const handleRedoWithLoader = () => runWithApplyLoader(handleRedo, 'Reapplying…');
   const handleCanvasDrawn = () => {
     if (pendingApplyRef.current) {
       pendingApplyRef.current = false;
@@ -112,10 +119,21 @@ const Editor = ({ addToast }) => {
   }, [user]);
 
   useEffect(() => {
+    setWorkerErrorHandler((msg) => addToast?.(msg, 'invalid'));
+    return () => setWorkerErrorHandler(null);
+  }, [addToast]);
+
+  useEffect(() => {
     let cancelled = false;
     const loadSelectedLUT = async () => {
-      if (editorState.selectedLUT) {
-        const lut = await loadLUT(`/luts/${editorState.selectedLUT.file}`);
+      const sel = editorState.selectedLUT;
+      if (sel?.adaptive) {
+        if (!cancelled) {
+          setLoadedLUT(getAdaptiveLUTById(sel.adaptiveId));
+          setIsApplyingLUT(false);
+        }
+      } else if (sel) {
+        const lut = await loadLUT(`/luts/${sel.file}`);
         if (!cancelled) {
           setLoadedLUT(lut);
           requestAnimationFrame(() => {
@@ -137,17 +155,18 @@ const Editor = ({ addToast }) => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        handleUndo();
+        handleUndoWithLoader();
       }
-      if (((e.ctrlKey || e.metaKey) && e.key === 'y') || 
+      if (((e.ctrlKey || e.metaKey) && e.key === 'y') ||
           ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z')) {
         e.preventDefault();
-        handleRedo();
+        handleRedoWithLoader();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleUndo, handleRedo]);
 
   const handleImageDelete = async (stored_name) => {
@@ -172,6 +191,8 @@ const Editor = ({ addToast }) => {
   const loadNewImage = (img) => {
     setUploadedImage(img);
     setSegmentationImageId(null);
+    clearAdaptiveLUTs();
+    jumpToNode(null);
   };
 
   const handleImageClick = async (imageItem) => {
@@ -417,6 +438,27 @@ const Editor = ({ addToast }) => {
     }
   };
 
+  const handleAIColorGrade = async () => {
+    if (!uploadedImage) return;
+    showLoader('AI color grading…');
+    try {
+      const lut = await getAdaptiveLUT(uploadedImage);
+      const id = registerAdaptiveLUT(lut);
+      const prev = editorState.selectedLUT;
+      const lutRef = { name: 'AI Color', file: `__adaptive_${id}`, adaptive: true, adaptiveId: id };
+      execute(new Command(
+        (s) => ({ ...s, selectedLUT: lutRef }),
+        (s) => ({ ...s, selectedLUT: prev }),
+      ));
+      addToast?.('AI color grade applied.', 'success');
+    } catch (error) {
+      console.error('AI color grade failed:', error);
+      addToast?.('Couldn’t apply the AI color grade right now — please try again.', 'error');
+    } finally {
+      hideLoader();
+    }
+  };
+
   const saveImage = async () => {
     if (!uploadedImage) return;
     
@@ -488,8 +530,8 @@ const Editor = ({ addToast }) => {
         handleLoadImages={handleLoadImages}
         setShowEditor={setShowEditor}
         droppedObjects={droppedObjects}
-        handleUndo={handleUndo}
-        handleRedo={handleRedo}
+        handleUndo={handleUndoWithLoader}
+        handleRedo={handleRedoWithLoader}
         canUndo={canUndo}
         canRedo={canRedo}
         uploadedImage={uploadedImage}
@@ -515,6 +557,7 @@ const Editor = ({ addToast }) => {
         onDownload={downloadImage}
         onReset={resetFilters}
         onSegment={handleSegment}
+        onColorGrade={handleAIColorGrade}
         isSegmented={!!segmentationImageId}
       />
 

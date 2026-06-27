@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { History, X, Sparkles } from 'lucide-react';
 import { runPredictiveBranch } from '../../ColorGradingUtils/predictive_core.js';
+import { registerAdaptiveLUT } from '../../ColorGradingUtils/adaptiveLutStore.js';
 import { parseHistory } from '../../../utils/historyParser.js';
 import { applyLUT, parseCubeLUT, getAvailableLUTs } from '../Utils/LUTUtils.js';
 import ClipLoader from 'react-spinners/HashLoader';
@@ -269,11 +270,14 @@ const HistoryViewer = ({
       if (result.aiParams) {
         const optimizedState = {
           ...currentNode.state,
-          brightness: result.aiParams.brightness || 100,
-          contrast: 100 + (result.aiParams.contrast || 0),
-          saturation: 100 + (result.aiParams.saturation || 0),
+          brightness: result.aiParams.brightness ?? 100,
+          contrast: result.aiParams.contrast ?? 100,
+          saturation: result.aiParams.saturation ?? 100,
         };
-        if (result.aiParams.lutId) {
+        if (result.wbLUT) {
+          const wbId = registerAdaptiveLUT(result.wbLUT);
+          optimizedState.selectedLUT = { name: 'AI White Balance', file: `__adaptive_${wbId}`, adaptive: true, adaptiveId: wbId };
+        } else if (result.aiParams.lutId) {
           const lutObj = getAvailableLUTs().find((l) => l.file === result.aiParams.lutId);
           optimizedState.selectedLUT = lutObj || null;
           optimizedState.lutStrength = Math.max(0, Math.min(100, 50 + (result.aiParams.lutStrengthDelta || 0)));
@@ -281,7 +285,8 @@ const HistoryViewer = ({
         const branchLabel = result.isAI
           ? `AI Optimized (${result.modelUsed})`
           : `Smart Optimized (${result.modelUsed})`;
-        addBranch(optimizedState, branchLabel);
+        const newId = addBranch(optimizedState, branchLabel);
+        if (newId !== undefined && newId !== null) setSelectedId(newId);
       } else {
         addToast?.('AI optimization failed to produce results. Please try again.', 'error');
       }

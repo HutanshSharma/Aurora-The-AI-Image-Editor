@@ -21,6 +21,7 @@ export default function Header({
   onDownload,
   onReset,
   onSegment,
+  onColorGrade,
   isSegmented,
   hasUnsavedChanges,
 }) {
@@ -67,6 +68,7 @@ export default function Header({
               onFilters={onFilters}
               onHistory={onHistory}
               onSegment={onSegment}
+              onColorGrade={onColorGrade}
               isSegmented={isSegmented}
               onSave={onSave}
               onDownload={onDownload}

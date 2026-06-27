@@ -32,8 +32,22 @@ export function parseCubeLUT(lutText) {
   return { size: lutSize, data: lutData };
 }
 
+function getFlatLUT(lut) {
+  if (lut._flat) return lut._flat;
+  const d = lut.data;
+  const flat = new Float32Array(d.length * 3);
+  for (let i = 0; i < d.length; i++) {
+    const t = d[i];
+    flat[i * 3] = t[0];
+    flat[i * 3 + 1] = t[1];
+    flat[i * 3 + 2] = t[2];
+  }
+  lut._flat = flat;
+  return flat;
+}
+
 /**
- * @param {ImageData} imageData 
+ * @param {ImageData} imageData
  * @param {Object} lut
  * @returns {ImageData}
  */
@@ -41,83 +55,45 @@ export function applyLUT(imageData, lut) {
   if (!lut || !lut.data || lut.data.length === 0) {
     return imageData;
   }
-    
+
   const { data } = imageData;
-  const lutSize = lut.size;
-  const lutData = lut.data;
-  
+  const N = lut.size;
+  const maxIndex = N - 1;
+  const N2 = N * N;
+  const f = getFlatLUT(lut);
+
   for (let i = 0; i < data.length; i += 4) {
-    const r = data[i] / 255;
-    const g = data[i + 1] / 255;
-    const b = data[i + 2] / 255;
-    const newColor = trilinearInterpolation(r, g, b, lutSize, lutData);
-    
-    data[i] = Math.min(255, Math.max(0, newColor[0] * 255));
-    data[i + 1] = Math.min(255, Math.max(0, newColor[1] * 255));
-    data[i + 2] = Math.min(255, Math.max(0, newColor[2] * 255));
-  }  
-  return imageData;
-}
+    const rs = (data[i] / 255) * maxIndex;
+    const gs = (data[i + 1] / 255) * maxIndex;
+    const bs = (data[i + 2] / 255) * maxIndex;
 
-/**
- * @param {number} r 
- * @param {number} g 
- * @param {number} b 
- * @param {number} lutSize 
- * @param {Array} lutData
- * @returns {Array}
- */
-function trilinearInterpolation(r, g, b, lutSize, lutData) {
-  const maxIndex = lutSize - 1;  
-  const rScaled = r * maxIndex;
-  const gScaled = g * maxIndex;
-  const bScaled = b * maxIndex;  
-  const r0 = Math.floor(rScaled);
-  const g0 = Math.floor(gScaled);
-  const b0 = Math.floor(bScaled);
-  
-  const r1 = Math.min(r0 + 1, maxIndex);
-  const g1 = Math.min(g0 + 1, maxIndex);
-  const b1 = Math.min(b0 + 1, maxIndex);
-  
-  const rFrac = rScaled - r0;
-  const gFrac = gScaled - g0;
-  const bFrac = bScaled - b0;
-  
-  const c000 = getLUTValue(r0, g0, b0, lutSize, lutData);
-  const c001 = getLUTValue(r0, g0, b1, lutSize, lutData);
-  const c010 = getLUTValue(r0, g1, b0, lutSize, lutData);
-  const c011 = getLUTValue(r0, g1, b1, lutSize, lutData);
-  const c100 = getLUTValue(r1, g0, b0, lutSize, lutData);
-  const c101 = getLUTValue(r1, g0, b1, lutSize, lutData);
-  const c110 = getLUTValue(r1, g1, b0, lutSize, lutData);
-  const c111 = getLUTValue(r1, g1, b1, lutSize, lutData);
-  
-  const c00 = lerp3D(c000, c001, bFrac);
-  const c01 = lerp3D(c010, c011, bFrac);
-  const c10 = lerp3D(c100, c101, bFrac);
-  const c11 = lerp3D(c110, c111, bFrac);
-  
-  const c0 = lerp3D(c00, c01, gFrac);
-  const c1 = lerp3D(c10, c11, gFrac);
-  
-  return lerp3D(c0, c1, rFrac);
-}
+    const r0 = rs | 0, g0 = gs | 0, b0 = bs | 0;
+    const r1 = r0 < maxIndex ? r0 + 1 : r0;
+    const g1 = g0 < maxIndex ? g0 + 1 : g0;
+    const b1 = b0 < maxIndex ? b0 + 1 : b0;
+    const rf = rs - r0, gf = gs - g0, bf = bs - b0;
 
-function getLUTValue(r, g, b, lutSize, lutData) {
-  const index = r + g * lutSize + b * lutSize * lutSize;
-  if (index < 0 || index >= lutData.length) {
-    return [r / (lutSize - 1), g / (lutSize - 1), b / (lutSize - 1)];
+    const i000 = (r0 + g0 * N + b0 * N2) * 3;
+    const i100 = (r1 + g0 * N + b0 * N2) * 3;
+    const i010 = (r0 + g1 * N + b0 * N2) * 3;
+    const i110 = (r1 + g1 * N + b0 * N2) * 3;
+    const i001 = (r0 + g0 * N + b1 * N2) * 3;
+    const i101 = (r1 + g0 * N + b1 * N2) * 3;
+    const i011 = (r0 + g1 * N + b1 * N2) * 3;
+    const i111 = (r1 + g1 * N + b1 * N2) * 3;
+
+    for (let c = 0; c < 3; c++) {
+      const c00 = f[i000 + c] * (1 - rf) + f[i100 + c] * rf;
+      const c10 = f[i010 + c] * (1 - rf) + f[i110 + c] * rf;
+      const c01 = f[i001 + c] * (1 - rf) + f[i101 + c] * rf;
+      const c11 = f[i011 + c] * (1 - rf) + f[i111 + c] * rf;
+      const c0 = c00 * (1 - gf) + c10 * gf;
+      const c1 = c01 * (1 - gf) + c11 * gf;
+      const v = (c0 * (1 - bf) + c1 * bf) * 255;
+      data[i + c] = v < 0 ? 0 : v > 255 ? 255 : v;
+    }
   }
-  return lutData[index];
-}
-
-function lerp3D(a, b, t) {
-  return [
-    a[0] + (b[0] - a[0]) * t,
-    a[1] + (b[1] - a[1]) * t,
-    a[2] + (b[2] - a[2]) * t
-  ];
+  return imageData;
 }
 
 /**

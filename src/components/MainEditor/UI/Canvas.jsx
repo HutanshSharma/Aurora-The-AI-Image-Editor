@@ -65,6 +65,7 @@ export default function Canvas({
   const drawRef = useRef(null);
   const drawScheduledRef = useRef(false);
   const commitTimerRef = useRef(null);
+  const interactingRef = useRef(false);
 
   const scheduleDraw = useCallback(() => {
     if (drawScheduledRef.current) return;
@@ -78,10 +79,12 @@ export default function Canvas({
   const commitView = useCallback(() => {
     clearTimeout(commitTimerRef.current);
     commitTimerRef.current = setTimeout(() => {
+      interactingRef.current = false;  
+      scheduleDraw();
       setZoom(zoomRef.current);
       setOffset(offsetRef.current);
     }, 120);
-  }, []);
+  }, [scheduleDraw]);
 
   const applyZoom = useCallback((delta, focusX, focusY) => {
     const canvas = canvasRef.current;
@@ -98,12 +101,14 @@ export default function Canvas({
     if (next === 1) { nx = 0; ny = 0; }
     zoomRef.current = next;
     offsetRef.current = { x: nx, y: ny };
+    interactingRef.current = true;
     scheduleDraw();
     commitView();
   }, [scheduleDraw, commitView]);
 
   const panBy = useCallback((dx, dy) => {
     offsetRef.current = { x: offsetRef.current.x + dx, y: offsetRef.current.y + dy };
+    interactingRef.current = true;
     scheduleDraw();
     commitView();
   }, [scheduleDraw, commitView]);
@@ -550,7 +555,7 @@ export default function Canvas({
     ctx.clearRect(0, 0, W, H);
     ctx.setTransform(zoomRef.current, 0, 0, zoomRef.current, offsetRef.current.x, offsetRef.current.y);
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingQuality = interactingRef.current ? 'low' : 'high';
 
     const scale = Math.min(W / uploadedImage.width, H / uploadedImage.height);
     const imgWidth = uploadedImage.width * scale;
@@ -575,7 +580,11 @@ export default function Canvas({
         offCtx.drawImage(uploadedImage, 0, 0);
         const data = offCtx.getImageData(0, 0, off.width, off.height);
         offCtx.putImageData(applyLUT(data, loadedLUT), 0, 0);
-        lutBaseRef.current = { canvas: off, lut: loadedLUT, img: uploadedImage };
+        const baked = document.createElement('canvas');
+        baked.width = off.width;
+        baked.height = off.height;
+        baked.getContext('2d').drawImage(off, 0, 0);
+        lutBaseRef.current = { canvas: baked, lut: loadedLUT, img: uploadedImage };
       }
       lutBase = lutBaseRef.current.canvas;
     } else {
