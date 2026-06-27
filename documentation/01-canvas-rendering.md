@@ -160,25 +160,14 @@ factor `min(canvasW/imgW, canvasH/imgH)` maps viewport → native. Merged segmen
 overlays are stored in **normalised** coordinates (0–1) so they survive zoom,
 pan and resolution changes.
 
----
-
-## 6. Models used
-
-**None.** The canvas pipeline is pure Canvas 2D API maths (CSS filters +
-trilinear‑interpolated LUTs). All neural features (AI colour grade, Qwen edit,
-predictive grade) are layered *on top* of this pipeline and are documented
-separately:
-
-- **[05 – AI Colour Grading](./05-color-grading.md)** (client‑side ONNX)
-- **[06 – Qwen AI Editing](./06-qwen-inpainting.md)** (remote HF Space)
 
 ---
 
-## 7. Summary
+## 6. Summary
 
 - One canvas, two render paths (viewport + native‑res `flattenComposite`) sharing
   identical maths → true WYSIWYG export.
-- Fixed pipeline order: **transform → LUT → tone filters → opacity →
+- Fixed pipeline order: **LUT → tone filters → transform → opacity →
   composite**.
 - Two‑layer caching (`lutBaseRef` for LUT, `processedRef` for filters) keeps
   real‑time editing smooth.
