@@ -42,8 +42,9 @@ export default function Canvas({
   const startPressPosRef = useRef(null);
   const isLongPressActiveRef = useRef(false);
   
-  const lutBaseRef = useRef(null); 
-  const processedRef = useRef(null); 
+  const lutBaseRef = useRef(null);
+  const processedRef = useRef(null);
+  const processedCanvasRef = useRef(null);
   const imageBoundsRef = useRef(null);
   const tintedOverlayCacheRef = useRef(new WeakMap());
   const onDrawnRef = useRef(onDrawn);
@@ -66,6 +67,8 @@ export default function Canvas({
   const drawScheduledRef = useRef(false);
   const commitTimerRef = useRef(null);
   const interactingRef = useRef(false);
+  const settleTimerRef = useRef(null);
+  const prevEditorRef = useRef(editorState);
 
   const scheduleDraw = useCallback(() => {
     if (drawScheduledRef.current) return;
@@ -604,16 +607,21 @@ export default function Canvas({
     if (!pcache || pcache.base !== baseToken || pcache.key !== filterKey) {
       let processed = lutBase;
       if (hasColour) {
-        const pc = document.createElement('canvas');
-        pc.width = uploadedImage.width;
-        pc.height = uploadedImage.height;
+        let pc = processedCanvasRef.current;
+        if (!pc) { pc = document.createElement('canvas'); processedCanvasRef.current = pc; }
+        if (pc.width !== uploadedImage.width || pc.height !== uploadedImage.height) {
+          pc.width = uploadedImage.width;
+          pc.height = uploadedImage.height;
+        }
         const pctx = pc.getContext('2d');
         pctx.imageSmoothingEnabled = true;
         pctx.imageSmoothingQuality = 'high';
         let f = `brightness(${bright}%) contrast(${contr}%) saturate(${sat}%) hue-rotate(${hue}deg)`;
         if (sharpen > 0) f += ` contrast(${100 + sharpen}%)`;
-        if ('filter' in pctx) pctx.filter = f;
+        pctx.filter = 'filter' in pctx ? f : 'none';
+        pctx.clearRect(0, 0, pc.width, pc.height);
         pctx.drawImage(lutBase, 0, 0);
+        if ('filter' in pctx) pctx.filter = 'none';
         processed = pc;
       }
       processedRef.current = { canvas: processed, base: baseToken, key: filterKey };
@@ -708,7 +716,16 @@ export default function Canvas({
   drawRef.current = draw;
 
   useEffect(() => {
-    draw();
+    if (prevEditorRef.current !== editorState) {
+      prevEditorRef.current = editorState;
+      interactingRef.current = true;
+      clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = setTimeout(() => {
+        interactingRef.current = false;
+        scheduleDraw();
+      }, 160);
+    }
+    scheduleDraw();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadedImage, objects, selectedObject, editorState, loadedLUT, segmentOverlays, mergedSegments, isDraggingObject, draggingObjectId]);
   const previewFilter = useMemo(() => {

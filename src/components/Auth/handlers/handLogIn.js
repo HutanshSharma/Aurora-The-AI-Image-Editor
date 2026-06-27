@@ -1,6 +1,6 @@
 import { API_BASE } from '../../../utils/config';
 
-export default function handleLogIn(loginData, addToast, setIsLoading){
+export default function handleLogIn(loginData, addToast, setIsLoading, navigate){
     if(loginData.email === '' || loginData.password === ''){
       addToast('Required Fields are empty','error')
       return 
@@ -58,7 +58,8 @@ export default function handleLogIn(loginData, addToast, setIsLoading){
         localStorage.setItem('refresh_token',refreshData['refresh_token'])
         addToast("Logged in successfully","success")
         setIsLoading(false);
-        window.location.href = '/'
+        if (navigate) navigate('/', { replace: true })
+        else window.location.href = '/'
       }
       catch(error){
         addToast('Something went wrong. Please try again later.','invalid')

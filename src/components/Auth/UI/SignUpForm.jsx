@@ -1,4 +1,5 @@
 import { User, Mail, LockKeyhole, Eye, EyeOff, Check } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import handleSignUp from '../handlers/handleSignUp';
 import { FcGoogle } from 'react-icons/fc';
 import { FaFacebookF } from 'react-icons/fa';
@@ -35,8 +36,9 @@ export default function SignUpForm({
   isLoading,
   setIsLoading,
 }) {
+  const navigate = useNavigate();
   const submit = () =>
-    handleSignUp(signupData, requirements, addToast, setIsLogin, setIsLoading);
+    handleSignUp(signupData, requirements, addToast, setIsLogin, setIsLoading, navigate);
 
   return (
     <form

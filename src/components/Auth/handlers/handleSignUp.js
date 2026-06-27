@@ -1,6 +1,6 @@
 import { API_BASE } from '../../../utils/config';
 
-export default function handleSignUp(signupData, requirements, addToast, setIsLogin, setIsLoading){
+export default function handleSignUp(signupData, requirements, addToast, setIsLogin, setIsLoading, navigate){
   if(signupData.name === '' || signupData.email === '' || signupData.password === ''){
     addToast('Required Fields are empty','error')
     return 
@@ -94,7 +94,8 @@ export default function handleSignUp(signupData, requirements, addToast, setIsLo
         addToast('Account created and logged in successfully.','success')
         localStorage.setItem('refresh_token',refreshData['refresh_token'])
         setIsLoading(false);
-        window.location.href = '/'
+        if (navigate) navigate('/', { replace: true })
+        else window.location.href = '/'
       }
       catch(error){
         addToast('Something went wrong. Please try again later.','invalid')
