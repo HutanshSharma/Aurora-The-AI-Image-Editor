@@ -60,7 +60,6 @@ independent, the *effective* order is:
 
 1. **LUT (colour grade)** — applied at the **pixel** level *first*, into
    `lutBaseRef`, so the LUT operates on the raw colours like a film LUT would.
-   See §4.
 2. **CSS tone filters** — `brightness`, `contrast`, `saturate`, `hue-rotate`,
    and a `sharpen` boost are baked on top of the LUT canvas into `processedRef`.
    `blur` is **not** baked here — it's applied live at draw time.
